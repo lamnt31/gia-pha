@@ -71,6 +71,27 @@ D.onUser(async (u, err) => {
   if (pick) openTree(pick.id, true); else { S.tree = null; S.tab = 'home'; shell(); }
 });
 
+// ======================= Cài ứng dụng (PWA) – giống app Thẻ =======================
+const INST = { deferred: null };
+const standalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const canInstall = () => !standalone();
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); INST.deferred = e; });
+addEventListener('appinstalled', () => { INST.deferred = null; document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true)); toast('Đã cài ứng dụng'); });
+function bindInstall(root) { root.querySelectorAll('[data-install]').forEach((b) => (b.onclick = doInstall)); }
+async function doInstall() {
+  if (INST.deferred) {   // Android / Chrome / Edge: hiện hộp cài đặt của trình duyệt
+    INST.deferred.prompt();
+    const c = await INST.deferred.userChoice; INST.deferred = null;
+    if (c.outcome === 'accepted') document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true));
+    return;
+  }
+  const msg = isIOS
+    ? '1. Mở trang này bằng <b>Safari</b><br>2. Bấm nút <b>Chia sẻ</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ở thanh dưới<br>3. Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>'
+    : '1. Bấm nút menu <b>⋮</b> của trình duyệt (góc trên bên phải)<br>2. Chọn <b>Cài đặt ứng dụng</b> hoặc <b>Thêm vào màn hình chính</b><br><br>Nếu không thấy mục này: mở trang bằng <b>Chrome</b> hoặc <b>Edge</b>, hoặc app đã được cài sẵn.';
+  await ask({ title: 'Cài "Gia phả" lên máy', msg, ok: 'Đã hiểu' });
+}
+
 // ======================= Đăng nhập (giống ech-client: mã dòng họ + tên đăng nhập + mật khẩu) =======================
 function renderLogin(err = '') {
   const rem = store('remember') || {};
@@ -86,7 +107,9 @@ function renderLogin(err = '') {
     <div class="err" id="gErr">${esc(err)}</div>
     <p class="note">Chưa có tài khoản? <button type="button" class="linkbtn" id="lReg">Đăng ký dòng họ mới</button></p>
     ${D.isEmu ? '<p class="note"><i class="fa-solid fa-flask"></i> Đang chạy emulator (dữ liệu thử)</p>' : ''}
+    <button type="button" class="instbtn" data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i>Cài ứng dụng lên máy</button>
   </form>`;
+  bindInstall($('gate'));
   $('lEye').onclick = () => { const i = $('lPw'); i.type = i.type === 'password' ? 'text' : 'password'; $('lEye').innerHTML = `<i class="fa-regular fa-eye${i.type === 'text' ? '-slash' : ''}"></i>`; };
   $('lReg').onclick = renderRegister;
   $('lForgot').onclick = async () => {
@@ -685,6 +708,7 @@ function renderMore(m) {
         <button data-act="me"><i class="fa-solid fa-id-card"></i><span>Thông tin tài khoản</span></button>
         <button data-act="pw"><i class="fa-solid fa-key"></i><span>Đổi mật khẩu</span></button>
         <button data-act="theme"><i class="fa-solid fa-circle-half-stroke"></i><span>Sáng / tối</span></button>
+        <button data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i><span>Cài ứng dụng</span></button>
         ${D.isRoot() ? '<button data-act="clan"><i class="fa-solid fa-landmark"></i><span>Thông tin dòng họ</span></button>' : ''}
       </div>
       <p class="note" style="text-align:center">Dòng họ <b>${esc(D.clan.name || '')}</b> · mã <b>${esc(D.clan.code)}</b> · đăng nhập <b>${esc(a.username)}</b></p>
@@ -693,6 +717,7 @@ function renderMore(m) {
   m.querySelector('[data-act=me]').onclick = editMe;
   m.querySelector('[data-act=pw]').onclick = changePw;
   m.querySelector('[data-act=theme]').onclick = toggleTheme;
+  bindInstall(m);
   if (m.querySelector('[data-act=clan]')) m.querySelector('[data-act=clan]').onclick = editClan;
   $('mOut').onclick = async () => { if (await ask({ title: 'Đăng xuất?', ok: 'Đăng xuất' })) D.logout(); };
 }
