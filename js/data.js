@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792059039840';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792059859463';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -511,19 +511,29 @@ export async function syncEvents(treeId, items) {
   EVH.set(treeId, hash);
 }
 
-// ======================= Link nhờ điền thông tin 1 người (không cần tài khoản) =======================
-// Biên tập tạo link kèm bản chép thông tin hiện tại → người nhận (phiên ẩn danh) sửa / bổ sung và gửi →
-// biên tập duyệt ở mục Đề xuất, chọn trường áp dụng vào hồ sơ.
+// ======================= Link nhờ điền thông tin (không cần tài khoản) – 1 người, cả gia đình hoặc cả nhánh =======================
+// Biên tập tạo link kèm bản chép thông tin hiện tại của các thành viên trong phạm vi → gửi vào nhóm / cho chủ hộ.
+// Mỗi người mở link (phiên ẩn danh) gửi 1 bản cho mỗi thành viên, có thể thêm người mới (con, vợ/chồng).
+// Biên tập duyệt ở "Duyệt thông tin", chọn trường áp dụng vào hồ sơ.
 export const COLLECT_FIELDS = ['name', 'nick', 'alias', 'gender', 'branch', 'order', 'adopted', 'birthSolar', 'birthLunar', 'alive', 'deathSolar', 'deathLunar', 'birthPlace', 'address', 'burial', 'job', 'note', 'photo'];
-export async function createCollectLink(tree, person, days = 7) {
-  const code = randomCode(), snap = {};
-  for (const k of COLLECT_FIELDS) if (person[k] !== undefined && person[k] !== null && person[k] !== '') snap[k] = person[k];
-  await setDoc(doc(db, 'collectLinks', code), { tree: tree.id, treeName: tree.name, clanName: clan.name || clan.code, person: person.id, name: person.name || 'Chưa rõ tên',
-    snap, by: me.uid, byName: myName(), createdAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + days * 864e5) });
+const COLLECT_MAX = 300;
+/** list: [{p, info}] – thành viên trong phạm vi (người đầu tiên = người gốc) */
+export async function createCollectLink(tree, list, { scope = 'one', allowAdd = false, days = 7 } = {}) {
+  const code = randomCode(), snaps = {}, persons = [];
+  let budget = 600000;   // ảnh nén ~40 KB/người; giữ tài liệu < 1 MB
+  for (const { p, info } of list.slice(0, COLLECT_MAX)) {
+    const snap = { info: info || '' };
+    for (const k of COLLECT_FIELDS) if (p[k] !== undefined && p[k] !== null && p[k] !== '') snap[k] = p[k];
+    if (snap.photo) { if (snap.photo.length > budget) delete snap.photo; else budget -= snap.photo.length; }
+    snaps[p.id] = snap; persons.push(p.id);
+  }
+  const main = list[0].p;
+  await setDoc(doc(db, 'collectLinks', code), { tree: tree.id, treeName: tree.name, clanName: clan.name || clan.code, person: main.id, name: main.name || 'Chưa rõ tên',
+    persons, snaps, scope, allowAdd: !!allowAdd, by: me.uid, byName: myName(), createdAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + days * 864e5) });
   return code;
 }
 export const collectLinkUrl = (code) => `${location.origin}${location.pathname}?collect=${encodeURIComponent(code)}`;
-/** Mở link nhờ điền: dùng phiên đang có hoặc phiên ẩn danh; trả về link + bản đã gửi trước đó (nếu có) */
+/** Mở link: phiên đang có hoặc phiên ẩn danh; trả về link + các bản tôi đã gửi (Map khóa → bản) */
 export async function openCollect(code) {
   await auth.authStateReady();
   if (!auth.currentUser) await signInAnonymously(auth);
@@ -531,17 +541,27 @@ export async function openCollect(code) {
   if (!s.exists()) throw new Error('Link không tồn tại hoặc đã bị hủy.');
   const link = { code, ...s.data() };
   if (link.expiresAt.toMillis() < Date.now()) throw new Error('Link đã hết hạn. Hãy xin người quản lý gia phả gửi link mới.');
-  let mine = null;
-  try { const m = await getDoc(doc(db, 'collectSubs', `${code}_${auth.currentUser.uid}`)); if (m.exists()) mine = m.data(); } catch (e) { /* chưa gửi */ }
+  if (!link.persons) { link.persons = [link.person]; link.snaps = { [link.person]: link.snap || {} }; }   // link cũ (1 người)
+  const mine = new Map();
+  try {
+    const q = await getDocs(query(collection(db, 'collectSubs'), where('uid', '==', auth.currentUser.uid), where('code', '==', code)));
+    q.forEach((d) => mine.set(d.data().key || d.data().person, { id: d.id, ...d.data() }));
+  } catch (e) { /* chưa gửi */ }
   return { link, mine };
 }
-export async function submitCollect(link, all, from, phone, existed) {
-  const snap = link.snap || {}, data = {};
-  for (const k of COLLECT_FIELDS) { const a = all[k] ?? '', b = snap[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : k === 'adopted' ? false : ''); if (String(a) !== String(b)) data[k] = all[k]; }
-  const ref = doc(db, 'collectSubs', `${link.code}_${auth.currentUser.uid}`);
+/** Gửi / gửi lại 1 bản. person = '' khi thêm người mới (kèm rel {kind, of}) */
+export async function submitCollect(link, { key, person, personName, all, from, phone, rel, existed }) {
+  const snap = (person && link.snaps[person]) || {}, data = {};
+  for (const k of COLLECT_FIELDS) {
+    const a = all[k] ?? '', b = snap[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : k === 'adopted' ? false : '');
+    if (person ? String(a) !== String(b) : a !== '' && a !== null && !(k === 'adopted' && !a)) data[k] = all[k];
+  }
+  if (!person) { data.alive = all.alive; data.gender = all.gender; }
+  const ref = doc(db, 'collectSubs', `${link.code}_${auth.currentUser.uid}_${key}`);
   if (existed) await updateDoc(ref, { data, from, phone, at: serverTimestamp() });
-  else await setDoc(ref, { code: link.code, uid: auth.currentUser.uid, tree: link.tree, person: link.person, personName: link.name, data, from, phone, status: 'open', at: serverTimestamp() });
+  else await setDoc(ref, { code: link.code, uid: auth.currentUser.uid, tree: link.tree, person, key, personName, ...(rel ? { rel } : {}), data, from, phone, status: 'open', at: serverTimestamp() });
 }
+export const newKey = () => 'new' + Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, '').padEnd(8, '0');
 export async function listCollectSubs(treeId) {
   const s = await getDocs(query(collection(db, 'collectSubs'), where('tree', '==', treeId), where('status', '==', 'open')));
   return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));

@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792059039840';
-import * as D from './data.js?v=1792059039840';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792059039840';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792059039840';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792059859463';
+import * as D from './data.js?v=1792059859463';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792059859463';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792059859463';
 
-const APP_VER = '15/10 17:10';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 17:24';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1113,75 +1113,132 @@ async function pushSettings() {
   };
 }
 
-// ======================= Link nhờ điền thông tin 1 người (không cần tài khoản) =======================
-/** Biên tập: tạo link + QR nhờ người khác điền / bổ sung thông tin của p */
+// ======================= Link nhờ điền thông tin (không cần tài khoản) – 1 người, cả gia đình, cả nhánh =======================
+/** Thành viên trong phạm vi: one = 1 người; family = + vợ/chồng + các con; branch = + vợ/chồng + con cháu mọi đời (kèm vợ/chồng) */
+function collectScope(p, scope) {
+  const out = [], seen = new Set();
+  const add = (x) => { if (x && !seen.has(x.id)) { seen.add(x.id); out.push(x); } };
+  const withSpouses = (x) => { add(x); (x.spouseIds || []).map(byId).forEach(add); };
+  if (scope === 'one') add(p);
+  else if (scope === 'family') { withSpouses(p); S.A.allKids(p.id).forEach(add); }
+  else { const walk = (x) => { withSpouses(x); S.A.allKids(x.id).forEach(walk); }; walk(p); }
+  return out.map((x) => ({ p: x, info: [S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · ') }));
+}
 async function collectLinkFor(p) {
-  const v = await ask({ title: 'Nhờ người khác điền thông tin', msg: `Gửi link cho người biết rõ về <b>${esc(pname(p))}</b> (con cháu, họ hàng…). Họ <b>không cần tài khoản</b>, mở link là sửa / bổ sung được. Thông tin gửi về chỉ vào gia phả sau khi bạn <b>duyệt</b> ở mục Đề xuất.`,
-    fields: [{ id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
+  const n = (sc) => collectScope(p, sc).length;
+  const v = await ask({ title: 'Nhờ người khác điền thông tin', msg: `Người nhận <b>không cần tài khoản</b>. Gửi vào nhóm Zalo được – ai liên quan tự vào điền. Thông tin chỉ vào gia phả sau khi bạn <b>duyệt</b>.`,
+    fields: [
+      { id: 'sc', type: 'select', value: n('family') > 1 ? 'family' : 'one', ph: 'Phạm vi', options: [['one', `Chỉ ${pname(p)}`], ['family', `Gia đình: vợ/chồng, các con (${n('family')} người)`], ['branch', `Cả nhánh: con cháu mọi đời (${n('branch')} người)`]] },
+      { id: 'ad', type: 'select', value: '1', ph: 'Thêm người mới', options: [['1', 'Cho thêm người mới (con, vợ/chồng)'], ['0', 'Không cho thêm người mới']] },
+      { id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
   if (!v) return;
+  const list = collectScope(p, v.sc);
+  if (list.length > 300) toast('Nhánh quá lớn – link chỉ gồm 300 người đầu', 4000);
   busy('Đang tạo link…');
   let code;
-  try { code = await D.createCollectLink(S.tree, p, Number(v.d)); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
+  try { code = await D.createCollectLink(S.tree, list, { scope: v.sc, allowAdd: v.ad === '1', days: Number(v.d) }); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
   busy();
+  const who = v.sc === 'one' ? pname(p) : `gia đình ${pname(p)} (${list.length} người)`;
   showShareSheet({ title: 'Link nhờ điền thông tin', url: D.collectLinkUrl(code), expiresAt: Date.now() + Number(v.d) * 864e5,
-    text: `Nhờ bổ sung thông tin của "${pname(p)}" cho gia phả ${S.tree.name}`,
-    note: `Người nhận mở link, <b>không cần đăng nhập</b>, sửa / bổ sung thông tin của <b>${esc(pname(p))}</b>. Bạn duyệt ở mục <b>Đề xuất</b> rồi mới cập nhật vào gia phả.` });
+    text: `Nhờ cả nhà kiểm tra, bổ sung thông tin ${who} cho gia phả ${S.tree.name}`,
+    note: `Phạm vi: <b>${esc(who)}</b>${v.ad === '1' ? ' · được thêm người mới' : ''}. Người nhận <b>không cần đăng nhập</b>; bạn duyệt ở <b>Duyệt thông tin</b>.` });
 }
 
-/** Trang điền thông tin cho người mở link (không cần tài khoản) */
-async function renderCollect(code) {
+/** Trang cho người mở link (không cần tài khoản): danh sách thành viên → form từng người; thêm người mới */
+async function renderCollect(code, focus) {
   $('app').hidden = true; $('gate').hidden = false;
-  $('gate').innerHTML = `<div class="gbox wide"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang mở…</div></div>`;
+  if (!focus) $('gate').innerHTML = `<div class="gbox wide"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang mở…</div></div>`;
   let L, mine;
   try { ({ link: L, mine } = await D.openCollect(code)); }
   catch (e) { $('gate').innerHTML = `<div class="gbox"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div><p class="gs">${esc(D.errMsg(e))}</p></div>`; return; }
-  const d = { gender: 'm', alive: true, ...(L.snap || {}), ...((mine && mine.data) || {}) };
+  const single = L.persons.length === 1 && !L.allowAdd;
+  if (single) return collectForm(L, mine, { key: L.persons[0], person: L.persons[0] }, true);
+  if (focus) return collectForm(L, mine, focus);
+  const nm = (id) => (L.snaps[id] && L.snaps[id].name) || 'Chưa rõ tên';
+  const added = [...mine.values()].filter((x) => !x.person);
+  $('gate').innerHTML = `<div class="gbox wide" style="text-align:left">
+    <div style="text-align:center"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div>
+      <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(L.clanName || L.treeName)}</p>
+      <p class="gs">Nhờ bạn kiểm tra, bổ sung thông tin <b style="color:var(--text)">gia đình ${esc(L.name)}</b>. Bấm vào từng người để sửa. Không cần tài khoản – người quản lý gia phả sẽ duyệt.</p></div>
+    <div class="panel">${L.persons.map((id) => { const sn = L.snaps[id] || {}, done = mine.get(id); return `<div class="item" data-ck="${esc(id)}">
+      <div class="ic ${sn.gender === 'f' ? 'f' : 'm'}">${sn.photo ? `<img src="${esc(sn.photo)}" alt="">` : esc(initials(sn.name))}</div>
+      <div class="t"><b>${esc(nm(id))}</b><span>${esc(sn.info || '')}</span></div>${done ? '<span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span>' : '<i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i>'}</div>`; }).join('')}
+      ${added.map((x) => `<div class="item" data-ckn="${esc(x.key)}"><div class="ic ok"><i class="fa-solid fa-user-plus"></i></div><div class="t"><b>${esc(x.personName || 'Người mới')}</b><span>Người mới – ${x.rel.kind === 'child' ? 'con' : 'vợ/chồng'} của ${esc(nm(x.rel.of))}</span></div><span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span></div>`).join('')}</div>
+    ${L.allowAdd ? '<div class="sacts"><button class="abtn full" id="ckAdd"><i class="fa-solid fa-user-plus"></i>Thêm người mới (con, vợ/chồng)</button></div>' : ''}
+    <p class="note" style="text-align:center"><i class="fa-regular fa-clock"></i> Link hết hạn lúc ${esc(fmtTime(L.expiresAt))}</p></div>`;
+  $('gate').scrollTop = 0;
+  $('gate').querySelectorAll('[data-ck]').forEach((el) => (el.onclick = () => collectForm(L, mine, { key: el.dataset.ck, person: el.dataset.ck })));
+  $('gate').querySelectorAll('[data-ckn]').forEach((el) => { const x = mine.get(el.dataset.ckn); el.onclick = () => collectForm(L, mine, { key: x.key, person: '', rel: x.rel }); });
+  if ($('ckAdd')) $('ckAdd').onclick = async () => {
+    const v = await ask({ title: 'Thêm người mới', msg: 'Người mới sẽ được thêm vào gia phả sau khi người quản lý duyệt.',
+      fields: [{ id: 'k', type: 'select', value: 'child', ph: 'Quan hệ', options: [['child', 'Là con của…'], ['spouse', 'Là vợ / chồng của…']] },
+        { id: 'o', type: 'select', value: L.persons[0], ph: 'Của ai', options: L.persons.map((id) => [id, nm(id)]) }], ok: 'Tiếp tục' });
+    if (v) collectForm(L, mine, { key: D.newKey(), person: '', rel: { kind: v.k, of: v.o } });
+  };
+}
+/** Form điền thông tin 1 người (giống hệt form sửa, có ảnh) */
+function collectForm(L, mine, { key, person, rel }, single) {
+  const prev = mine.get(key), sn = (person && L.snaps[person]) || {};
+  const relName = rel && ((L.snaps[rel.of] || {}).name || 'Chưa rõ tên');
+  const d = { gender: rel && rel.kind === 'spouse' ? ((L.snaps[rel.of] || {}).gender === 'f' ? 'm' : 'f') : 'm', alive: true, ...sn, ...((prev && prev.data) || {}) };
   let photo = d.photo || '';
+  const who = person ? (sn.name || 'Chưa rõ tên') : `Người mới – ${rel.kind === 'child' ? 'con' : 'vợ/chồng'} của ${relName}`;
+  const me0 = store('collectFrom') || {};
   $('gate').innerHTML = `<form class="gbox wide" id="cf" style="text-align:left">
+    ${single ? '' : '<button type="button" class="linkbtn" id="cBack"><i class="fa-solid fa-arrow-left"></i> Danh sách gia đình</button>'}
     <div style="text-align:center"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div>
       <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(L.clanName || L.treeName)}</p></div>
-    <p class="gs" style="text-align:center">Nhờ bạn kiểm tra và bổ sung thông tin của <b style="color:var(--text)">${esc(L.name)}</b>. Không cần tài khoản. Người quản lý gia phả sẽ xem và duyệt.</p>
-    ${mine ? `<div class="panel" style="margin-bottom:10px"><div class="item" style="cursor:default"><div class="ic ok"><i class="fa-solid fa-check"></i></div><div class="t"><b>Bạn đã gửi trước đó</b><span>${mine.status === 'open' ? 'Đang chờ duyệt – có thể sửa và gửi lại' : 'Đã được xử lý'}</span></div></div></div>` : ''}
+    <p class="gs" style="text-align:center">${person ? `Kiểm tra và bổ sung thông tin của <b style="color:var(--text)">${esc(who)}</b>` : `<b style="color:var(--text)">${esc(who)}</b>`}. Không cần tài khoản. Người quản lý gia phả sẽ xem và duyệt.</p>
+    ${prev ? `<div class="panel" style="margin-bottom:10px"><div class="item" style="cursor:default"><div class="ic ok"><i class="fa-solid fa-check"></i></div><div class="t"><b>Bạn đã gửi trước đó</b><span>${prev.status === 'open' ? 'Đang chờ duyệt – có thể sửa và gửi lại' : 'Đã được xử lý'}</span></div></div></div>` : ''}
     ${personFieldsHtml(d)}
     <div class="fsec"><i class="fa-solid fa-user-pen"></i>Người gửi</div>
     <div class="fgrid">
-      <div class="fld"><label>Tên và quan hệ *</label><input id="c_from" value="${esc((mine && mine.from) || '')}" placeholder="vd: Hoa – cháu nội" required maxlength="120"></div>
-      <div class="fld"><label>Số điện thoại</label><input id="c_phone" type="tel" value="${esc((mine && mine.phone) || '')}" maxlength="30"></div>
+      <div class="fld"><label>Tên và quan hệ *</label><input id="c_from" value="${esc((prev && prev.from) || me0.from || '')}" placeholder="vd: Hoa – cháu nội" required maxlength="120"></div>
+      <div class="fld"><label>Số điện thoại</label><input id="c_phone" type="tel" value="${esc((prev && prev.phone) || me0.phone || '')}" maxlength="30"></div>
     </div>
-    <button class="go" id="cGo" style="margin-top:14px" ${mine && mine.status !== 'open' ? 'disabled' : ''}><i class="fa-solid fa-paper-plane"></i><span>${mine ? 'Gửi lại' : 'Gửi thông tin'}</span></button>
+    <button class="go" id="cGo" style="margin-top:14px" ${prev && prev.status !== 'open' ? 'disabled' : ''}><i class="fa-solid fa-paper-plane"></i><span>${prev ? 'Gửi lại' : 'Gửi thông tin'}</span></button>
     <p class="note" style="text-align:center"><i class="fa-regular fa-clock"></i> Link hết hạn lúc ${esc(fmtTime(L.expiresAt))}</p>
   </form>`;
+  $('gate').scrollTop = 0;
   bindPersonFields($('gate'), d, (ph) => { photo = ph; });
+  if ($('cBack')) $('cBack').onclick = () => renderCollect(L.code);
   $('cf').onsubmit = async (e) => {
     e.preventDefault();
-    const data = readPersonFields($('gate'), photo);
-    if (!data) return;
+    const all = readPersonFields($('gate'), photo);
+    if (!all) return;
+    if (!person && !all.name) return toast('Nhập họ tên người mới');
+    const from = $('c_from').value.trim(), phone = $('c_phone').value.trim();
+    store('collectFrom', { from, phone });
     busy('Đang gửi…');
     try {
-      await D.submitCollect(L, data, $('c_from').value.trim(), $('c_phone').value.trim(), !!mine);
+      await D.submitCollect(L, { key, person, personName: person ? sn.name || 'Chưa rõ tên' : all.name, all, from, phone, rel, existed: !!prev });
       busy();
+      if (!single) { toast('Đã gửi – cảm ơn bạn!'); return renderCollect(L.code); }
       $('gate').innerHTML = `<div class="gbox"><div class="lock" style="background:var(--ok)"><i class="fa-solid fa-check"></i></div><div class="gt">Cảm ơn bạn!</div>
-        <p class="gs">Thông tin về <b>${esc(L.name)}</b> đã được gửi. Người quản lý gia phả <b>${esc(L.clanName || L.treeName)}</b> sẽ xem và duyệt.</p>
+        <p class="gs">Thông tin về <b>${esc(who)}</b> đã được gửi. Người quản lý gia phả <b>${esc(L.clanName || L.treeName)}</b> sẽ xem và duyệt.</p>
         <button class="go" id="cAgain" style="background:var(--card-solid);color:var(--accent);border:1px solid var(--ring)"><i class="fa-solid fa-pen"></i>Sửa lại thông tin đã gửi</button></div>`;
-      $('cAgain').onclick = () => renderCollect(code);
+      $('cAgain').onclick = () => renderCollect(L.code);
     } catch (er) { busy(); toast(D.errMsg(er), 5000); }
   };
 }
 
-/** Mục Đề xuất: thông tin gửi về từ link nhờ điền → so sánh cũ / mới, chọn trường để áp dụng */
+/** Duyệt: thông tin gửi về từ link nhờ điền → so sánh cũ / mới, chọn trường; người mới → thêm vào cây đúng quan hệ */
 const showVal = (k, v) => (v === undefined || v === null || v === '' ? '—' : k === 'gender' ? (v === 'f' ? 'Nữ' : 'Nam') : k === 'adopted' ? (v ? 'Có' : 'Không') : typeof v === 'boolean' ? (v ? 'Còn sống' : 'Đã mất') : String(v));
 const cellVal = (k, v) => (k === 'photo' ? (v ? `<img class="mini" src="${esc(v)}" alt="">` : '—') : esc(showVal(k, v)));
 function collectCards(list) {
   return list.map((x) => {
-    const cur = byId(x.person) || {};
-    const ch = D.COLLECT_FIELDS.filter((k) => x.data[k] !== undefined && String(x.data[k] ?? '') !== String(cur[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : '')));
-    return `<div class="item" style="align-items:flex-start;cursor:default" data-cs="${esc(x.id)}"><div class="ic info"><i class="fa-solid fa-file-pen"></i></div>
-      <div class="t"><b>${esc(x.personName)}${byId(x.person) ? '' : ' (đã xóa khỏi cây)'}</b><span>Từ: ${esc(x.from)}${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</span>
+    const isNew = !x.person, cur = isNew ? {} : byId(x.person) || {}, of = isNew && x.rel ? byId(x.rel.of) : null;
+    const ch = D.COLLECT_FIELDS.filter((k) => x.data[k] !== undefined && (isNew ? x.data[k] !== '' : String(x.data[k] ?? '') !== String(cur[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : k === 'adopted' ? false : ''))));
+    const ok = isNew ? !!of : !!byId(x.person);
+    const title = isNew ? `Thêm mới: ${x.personName || 'Chưa rõ tên'}` : x.personName;
+    const sub = isNew ? `${x.rel.kind === 'child' ? 'Con' : 'Vợ/chồng'} của ${of ? pname(of) : '(người đã xóa)'}` : (byId(x.person) ? '' : 'Người này đã bị xóa khỏi cây');
+    return `<div class="item" style="align-items:flex-start;cursor:default" data-cs="${esc(x.id)}"><div class="ic ${isNew ? 'ok' : 'info'}"><i class="fa-solid ${isNew ? 'fa-user-plus' : 'fa-file-pen'}"></i></div>
+      <div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}<span>Từ: ${esc(x.from)}${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</span>
       ${ch.length ? `<div class="rows" style="margin-top:8px">${ch.map((k) => `<label class="r ck" style="gap:8px"><input type="checkbox" data-k="${k}" checked><span style="flex:0 0 auto;min-width:90px">${esc(LABEL[k] || k)}</span>
-        <b style="margin-left:0;text-align:left;font-weight:500"><s style="color:var(--muted)">${cellVal(k, cur[k])}</s> → <span style="color:var(--ok);font-weight:700">${cellVal(k, x.data[k])}</span></b></label>`).join('')}</div>`
+        <b style="margin-left:0;text-align:left;font-weight:500">${isNew ? '' : `<s style="color:var(--muted)">${cellVal(k, cur[k])}</s> → `}<span style="color:var(--ok);font-weight:700">${cellVal(k, x.data[k])}</span></b></label>`).join('')}</div>`
         : '<span style="margin-top:6px">Không có gì khác so với hiện tại</span>'}
-      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${ch.length && byId(x.person) ? `<button class="abtn sm blue" data-cok="${esc(x.id)}"><i class="fa-solid fa-check"></i>Áp dụng mục đã chọn</button>` : ''}
-        <button class="abtn sm red" data-cno="${esc(x.id)}">${ch.length ? 'Từ chối' : 'Đóng'}</button>${byId(x.person) ? `<button class="abtn sm" data-open="${esc(x.person)}"><i class="fa-solid fa-user"></i>Hồ sơ</button>` : ''}</div></div></div>`;
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${ch.length && ok ? `<button class="abtn sm blue" data-cok="${esc(x.id)}"><i class="fa-solid fa-check"></i>${isNew ? 'Thêm vào gia phả' : 'Áp dụng mục đã chọn'}</button>` : ''}
+        <button class="abtn sm red" data-cno="${esc(x.id)}">${ch.length ? 'Từ chối' : 'Đóng'}</button>${!isNew && byId(x.person) ? `<button class="abtn sm" data-open="${esc(x.person)}"><i class="fa-solid fa-user"></i>Hồ sơ</button>` : ''}</div></div></div>`;
   }).join('');
 }
 function bindCollectCards(m, list, rerender) {
@@ -1189,10 +1246,21 @@ function bindCollectCards(m, list, rerender) {
     const x = list.find((y) => y.id === b.dataset.cok), card = m.querySelector(`[data-cs="${CSS.escape(x.id)}"]`);
     const keys = [...card.querySelectorAll('input[data-k]:checked')].map((i) => i.dataset.k);
     if (!keys.length) return toast('Chọn ít nhất 1 mục để áp dụng');
-    const upd = { id: x.person }; keys.forEach((k) => (upd[k] = x.data[k]));
+    const fields = {}; keys.forEach((k) => (fields[k] = x.data[k]));
     busy('Đang cập nhật…');
-    try { await D.saveChanges(S.tree.id, { updates: [upd] }, S.A.byId); await D.resolveCollect(x.id, 'done', keys); busy(); toast(`Đã cập nhật ${keys.length} mục vào gia phả`); rerender(); }
-    catch (e) { busy(); toast(D.errMsg(e), 4000); }
+    try {
+      if (x.person) await D.saveChanges(S.tree.id, { updates: [{ id: x.person, ...fields }] }, S.A.byId);
+      else {   // người mới: thêm vào cây đúng quan hệ
+        const of = byId(x.rel.of), nid = D.newPersonId(S.tree.id), add = { id: nid, gender: 'm', alive: true, ...fields, fatherId: '', motherId: '', spouseIds: [] }, updates = [];
+        if (x.rel.kind === 'child') {
+          add[of.gender === 'f' ? 'motherId' : 'fatherId'] = of.id;
+          const sp = (of.spouseIds || []).map(byId).filter(Boolean); if (sp.length === 1) add[of.gender === 'f' ? 'fatherId' : 'motherId'] = sp[0].id;
+        } else { add.spouseIds = [of.id]; updates.push({ id: of.id, spouseIds: D.rel.add(nid), _log: false }); }
+        await D.saveChanges(S.tree.id, { adds: [add], updates }, S.A.byId);
+      }
+      await D.resolveCollect(x.id, 'done', keys); busy();
+      toast(x.person ? `Đã cập nhật ${keys.length} mục vào gia phả` : 'Đã thêm người mới vào gia phả'); rerender();
+    } catch (e) { busy(); toast(D.errMsg(e), 4000); }
   }));
   m.querySelectorAll('[data-cno]').forEach((b) => (b.onclick = async () => {
     try { await D.resolveCollect(b.dataset.cno, 'rejected'); toast('Đã đóng'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
