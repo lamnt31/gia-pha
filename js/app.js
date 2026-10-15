@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792046497072';
-import * as D from './data.js?v=1792046497072';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792046497072';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792046497072';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792047029384';
+import * as D from './data.js?v=1792047029384';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792047029384';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792047029384';
 
-const APP_VER = '15/10 13:41';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 13:50';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -97,20 +97,21 @@ D.onUser(async (u, err) => {
 const INST = { deferred: null };
 const standalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const canInstall = () => !standalone();
-addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); INST.deferred = e; });
+// giống app Thẻ: chỉ hiện nút khi trình duyệt báo cài được (beforeinstallprompt) hoặc là iPhone/iPad
+const canInstall = () => !standalone() && (!!INST.deferred || isIOS);
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); INST.deferred = e; document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = false)); });
 addEventListener('appinstalled', () => { INST.deferred = null; document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true)); toast('Đã cài ứng dụng'); });
 function bindInstall(root) { root.querySelectorAll('[data-install]').forEach((b) => (b.onclick = doInstall)); }
 async function doInstall() {
   if (INST.deferred) {   // Android / Chrome / Edge: hiện hộp cài đặt của trình duyệt
     INST.deferred.prompt();
     const c = await INST.deferred.userChoice; INST.deferred = null;
-    if (c.outcome === 'accepted') document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true));
+    // đã cài hoặc bấm Hủy: ẩn nút; trình duyệt sẽ báo lại (beforeinstallprompt) khi cài được tiếp
+    if (c.outcome === 'accepted' || !canInstall()) document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true));
     return;
   }
-  const msg = isIOS
-    ? '1. Mở trang này bằng <b>Safari</b><br>2. Bấm nút <b>Chia sẻ</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ở thanh dưới<br>3. Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>'
-    : '1. Bấm nút menu <b>⋮</b> của trình duyệt (góc trên bên phải)<br>2. Chọn <b>Cài đặt ứng dụng</b> hoặc <b>Thêm vào màn hình chính</b><br><br>Nếu không thấy mục này: mở trang bằng <b>Chrome</b> hoặc <b>Edge</b>, hoặc app đã được cài sẵn.';
+  // iPhone / iPad: Safari không có hộp cài đặt → hướng dẫn thêm vào màn hình chính
+  const msg = '1. Mở trang này bằng <b>Safari</b><br>2. Bấm nút <b>Chia sẻ</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ở thanh dưới<br>3. Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>';
   await ask({ title: 'Cài "Gia phả" lên máy', msg, ok: 'Đã hiểu' });
 }
 
