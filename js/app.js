@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792059859463';
-import * as D from './data.js?v=1792059859463';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792059859463';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792059859463';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792060259681';
+import * as D from './data.js?v=1792060259681';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792060259681';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792060259681';
 
-const APP_VER = '15/10 17:24';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 17:30';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -345,6 +345,7 @@ async function openTree(id, first) {
     try {
       S.persons = list; S.A = analyze(list, S.tree.anchorId);
       renderTab(true);
+      if (S.propsWait && S.tab === 'props') { S.propsWait = false; renderProps($('main')); }
       scheduleEventsSync();
       if (S.jumpAfterLoad && S.A.byId.has(S.jumpAfterLoad)) { const j = S.jumpAfterLoad; S.jumpAfterLoad = null; go('tree'); setTimeout(() => jumpTo(j), 150); }
       if (store('pendingLink') && list.length && !S.linkBusy) {
@@ -1192,8 +1193,9 @@ function collectForm(L, mine, { key, person, rel }, single) {
     ${prev ? `<div class="panel" style="margin-bottom:10px"><div class="item" style="cursor:default"><div class="ic ok"><i class="fa-solid fa-check"></i></div><div class="t"><b>Bạn đã gửi trước đó</b><span>${prev.status === 'open' ? 'Đang chờ duyệt – có thể sửa và gửi lại' : 'Đã được xử lý'}</span></div></div></div>` : ''}
     ${personFieldsHtml(d)}
     <div class="fsec"><i class="fa-solid fa-user-pen"></i>Người gửi</div>
+    <p class="note" style="margin:4px 0 0">Để người quản lý gia phả biết <b>ai cung cấp thông tin</b> (khi nhiều người cùng điền) và liên hệ hỏi lại nếu cần. Số điện thoại không bắt buộc.</p>
     <div class="fgrid">
-      <div class="fld"><label>Tên và quan hệ *</label><input id="c_from" value="${esc((prev && prev.from) || me0.from || '')}" placeholder="vd: Hoa – cháu nội" required maxlength="120"></div>
+      <div class="fld"><label>Tên của bạn và quan hệ *</label><input id="c_from" value="${esc((prev && prev.from) || me0.from || '')}" placeholder="vd: Hoa – cháu nội" required maxlength="120"></div>
       <div class="fld"><label>Số điện thoại</label><input id="c_phone" type="tel" value="${esc((prev && prev.phone) || me0.phone || '')}" maxlength="30"></div>
     </div>
     <button class="go" id="cGo" style="margin-top:14px" ${prev && prev.status !== 'open' ? 'disabled' : ''}><i class="fa-solid fa-paper-plane"></i><span>${prev ? 'Gửi lại' : 'Gửi thông tin'}</span></button>
@@ -1222,46 +1224,70 @@ function collectForm(L, mine, { key, person, rel }, single) {
   };
 }
 
-/** Duyệt: thông tin gửi về từ link nhờ điền → so sánh cũ / mới, chọn trường; người mới → thêm vào cây đúng quan hệ */
+/** Duyệt: thông tin gửi về từ link nhờ điền. Danh sách gọn → "Xem & duyệt" mở bảng thông tin cá nhân: hiện tại → đề xuất mới */
 const showVal = (k, v) => (v === undefined || v === null || v === '' ? '—' : k === 'gender' ? (v === 'f' ? 'Nữ' : 'Nam') : k === 'adopted' ? (v ? 'Có' : 'Không') : typeof v === 'boolean' ? (v ? 'Còn sống' : 'Đã mất') : String(v));
 const cellVal = (k, v) => (k === 'photo' ? (v ? `<img class="mini" src="${esc(v)}" alt="">` : '—') : esc(showVal(k, v)));
+const DEF = { alive: true, gender: 'm', adopted: false };
+/** Các mục có thay đổi của 1 bản gửi */
+function collectChanges(x) {
+  const isNew = !x.person, cur = isNew ? {} : byId(x.person) || {};
+  return D.COLLECT_FIELDS.filter((k) => x.data[k] !== undefined && (isNew ? x.data[k] !== '' : String(x.data[k] ?? '') !== String(cur[k] ?? (DEF[k] ?? ''))));
+}
 function collectCards(list) {
   return list.map((x) => {
-    const isNew = !x.person, cur = isNew ? {} : byId(x.person) || {}, of = isNew && x.rel ? byId(x.rel.of) : null;
-    const ch = D.COLLECT_FIELDS.filter((k) => x.data[k] !== undefined && (isNew ? x.data[k] !== '' : String(x.data[k] ?? '') !== String(cur[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : k === 'adopted' ? false : ''))));
-    const ok = isNew ? !!of : !!byId(x.person);
+    const isNew = !x.person, of = isNew && x.rel ? byId(x.rel.of) : null, ch = collectChanges(x);
     const title = isNew ? `Thêm mới: ${x.personName || 'Chưa rõ tên'}` : x.personName;
     const sub = isNew ? `${x.rel.kind === 'child' ? 'Con' : 'Vợ/chồng'} của ${of ? pname(of) : '(người đã xóa)'}` : (byId(x.person) ? '' : 'Người này đã bị xóa khỏi cây');
-    return `<div class="item" style="align-items:flex-start;cursor:default" data-cs="${esc(x.id)}"><div class="ic ${isNew ? 'ok' : 'info'}"><i class="fa-solid ${isNew ? 'fa-user-plus' : 'fa-file-pen'}"></i></div>
+    return `<div class="item" style="align-items:flex-start;cursor:default"><div class="ic ${isNew ? 'ok' : 'info'}"><i class="fa-solid ${isNew ? 'fa-user-plus' : 'fa-file-pen'}"></i></div>
       <div class="t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}<span>Từ: ${esc(x.from)}${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</span>
-      ${ch.length ? `<div class="rows" style="margin-top:8px">${ch.map((k) => `<label class="r ck" style="gap:8px"><input type="checkbox" data-k="${k}" checked><span style="flex:0 0 auto;min-width:90px">${esc(LABEL[k] || k)}</span>
-        <b style="margin-left:0;text-align:left;font-weight:500">${isNew ? '' : `<s style="color:var(--muted)">${cellVal(k, cur[k])}</s> → `}<span style="color:var(--ok);font-weight:700">${cellVal(k, x.data[k])}</span></b></label>`).join('')}</div>`
-        : '<span style="margin-top:6px">Không có gì khác so với hiện tại</span>'}
-      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${ch.length && ok ? `<button class="abtn sm blue" data-cok="${esc(x.id)}"><i class="fa-solid fa-check"></i>${isNew ? 'Thêm vào gia phả' : 'Áp dụng mục đã chọn'}</button>` : ''}
-        <button class="abtn sm red" data-cno="${esc(x.id)}">${ch.length ? 'Từ chối' : 'Đóng'}</button>${!isNew && byId(x.person) ? `<button class="abtn sm" data-open="${esc(x.person)}"><i class="fa-solid fa-user"></i>Hồ sơ</button>` : ''}</div></div></div>`;
+        <span style="color:var(--text)">${ch.length ? `${ch.length} mục: ${ch.slice(0, 4).map((k) => esc(LABEL[k] || k)).join(', ')}${ch.length > 4 ? '…' : ''}` : 'Không có gì khác so với hiện tại'}</span>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${ch.length ? `<button class="abtn sm blue" data-cview="${esc(x.id)}"><i class="fa-solid fa-magnifying-glass"></i>Xem &amp; duyệt</button>` : ''}
+          <button class="abtn sm red" data-cno="${esc(x.id)}">${ch.length ? 'Từ chối' : 'Đóng'}</button></div></div></div>`;
   }).join('');
 }
-function bindCollectCards(m, list, rerender) {
-  m.querySelectorAll('[data-cok]').forEach((b) => (b.onclick = async () => {
-    const x = list.find((y) => y.id === b.dataset.cok), card = m.querySelector(`[data-cs="${CSS.escape(x.id)}"]`);
-    const keys = [...card.querySelectorAll('input[data-k]:checked')].map((i) => i.dataset.k);
-    if (!keys.length) return toast('Chọn ít nhất 1 mục để áp dụng');
-    const fields = {}; keys.forEach((k) => (fields[k] = x.data[k]));
+/** Áp dụng các mục đã chọn: sửa hồ sơ, hoặc thêm người mới đúng quan hệ */
+async function applyCollect(x, keys) {
+  const fields = {}; keys.forEach((k) => (fields[k] = x.data[k]));
+  if (x.person) await D.saveChanges(S.tree.id, { updates: [{ id: x.person, ...fields }] }, S.A.byId);
+  else {
+    const of = byId(x.rel.of), nid = D.newPersonId(S.tree.id), add = { id: nid, gender: 'm', alive: true, ...fields, fatherId: '', motherId: '', spouseIds: [] }, updates = [];
+    if (x.rel.kind === 'child') {
+      add[of.gender === 'f' ? 'motherId' : 'fatherId'] = of.id;
+      const sp = (of.spouseIds || []).map(byId).filter(Boolean); if (sp.length === 1) add[of.gender === 'f' ? 'fatherId' : 'motherId'] = sp[0].id;
+    } else { add.spouseIds = [of.id]; updates.push({ id: of.id, spouseIds: D.rel.add(nid), _log: false }); }
+    await D.saveChanges(S.tree.id, { adds: [add], updates }, S.A.byId);
+  }
+  await D.resolveCollect(x.id, 'done', keys);
+}
+/** Popup duyệt: chỉ thông tin cá nhân, cột Hiện tại → Đề xuất mới; mục thay đổi có ô chọn */
+function reviewSheet(x, rerender) {
+  const isNew = !x.person, cur = isNew ? {} : byId(x.person) || {}, of = isNew && x.rel ? byId(x.rel.of) : null;
+  const ch = new Set(collectChanges(x)), ok = isNew ? !!of : !!byId(x.person);
+  // mục thay đổi lên đầu, sau đó các mục không đổi để đối chiếu
+  const rows = [...D.COLLECT_FIELDS.filter((k) => ch.has(k)), ...D.COLLECT_FIELDS.filter((k) => !ch.has(k) && !isNew && k !== 'photo' && cur[k] !== undefined && cur[k] !== '' && cur[k] !== null)];
+  openSheet(`<h2 style="margin:0 0 2px;font-size:var(--fs-2xl)">${esc(isNew ? 'Thêm người mới' : 'Duyệt thông tin')}: ${esc(x.personName || 'Chưa rõ tên')}</h2>
+    <p style="margin:0;color:var(--muted)">${isNew ? `${x.rel.kind === 'child' ? 'Con' : 'Vợ/chồng'} của ${esc(of ? pname(of) : '?')} · ` : ''}Từ: <b>${esc(x.from)}</b>${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</p>
+    <label class="ck" style="margin-top:8px"><input type="checkbox" id="rvAll" checked>Chọn tất cả mục thay đổi</label>
+    <div class="rvtable"><div class="rvh"><span></span><span>Mục</span><span>Hiện tại</span><span>Đề xuất mới</span></div>
+      ${rows.map((k) => { const c = ch.has(k); return `<label class="rvr ${c ? 'chg' : ''}"><span>${c ? `<input type="checkbox" data-k="${k}" checked>` : ''}</span><span>${esc(LABEL[k] || k)}</span>
+        <span class="old">${isNew ? '—' : cellVal(k, cur[k])}</span><span class="new">${c ? cellVal(k, x.data[k]) : '<small>không đổi</small>'}</span></label>`; }).join('')}</div>
+    <div class="fbar"><button type="button" class="abtn red" id="rvNo">Từ chối</button><button class="abtn blue" id="rvOk" ${ok ? '' : 'disabled'}><i class="fa-solid fa-check"></i><span id="rvN"></span></button></div>`);
+  const sh = $('sheet'), boxes = [...sh.querySelectorAll('input[data-k]')];
+  const upd = () => { const n = boxes.filter((b) => b.checked).length; $('rvN').textContent = isNew ? `Thêm vào gia phả (${n} mục)` : `Áp dụng ${n} mục`; $('rvOk').disabled = !ok || !n; $('rvAll').checked = n === boxes.length; };
+  boxes.forEach((b) => (b.onchange = upd)); $('rvAll').onchange = () => { boxes.forEach((b) => (b.checked = $('rvAll').checked)); upd(); }; upd();
+  $('rvOk').onclick = async () => {
+    const keys = boxes.filter((b) => b.checked).map((b) => b.dataset.k);
     busy('Đang cập nhật…');
-    try {
-      if (x.person) await D.saveChanges(S.tree.id, { updates: [{ id: x.person, ...fields }] }, S.A.byId);
-      else {   // người mới: thêm vào cây đúng quan hệ
-        const of = byId(x.rel.of), nid = D.newPersonId(S.tree.id), add = { id: nid, gender: 'm', alive: true, ...fields, fatherId: '', motherId: '', spouseIds: [] }, updates = [];
-        if (x.rel.kind === 'child') {
-          add[of.gender === 'f' ? 'motherId' : 'fatherId'] = of.id;
-          const sp = (of.spouseIds || []).map(byId).filter(Boolean); if (sp.length === 1) add[of.gender === 'f' ? 'fatherId' : 'motherId'] = sp[0].id;
-        } else { add.spouseIds = [of.id]; updates.push({ id: of.id, spouseIds: D.rel.add(nid), _log: false }); }
-        await D.saveChanges(S.tree.id, { adds: [add], updates }, S.A.byId);
-      }
-      await D.resolveCollect(x.id, 'done', keys); busy();
-      toast(x.person ? `Đã cập nhật ${keys.length} mục vào gia phả` : 'Đã thêm người mới vào gia phả'); rerender();
-    } catch (e) { busy(); toast(D.errMsg(e), 4000); }
-  }));
+    try { await applyCollect(x, keys); busy(); closeSheet(true); toast(isNew ? 'Đã thêm người mới vào gia phả' : `Đã cập nhật ${keys.length} mục vào gia phả`); rerender(); }
+    catch (e) { busy(); toast(D.errMsg(e), 4000); }
+  };
+  $('rvNo').onclick = async () => {
+    if (!(await ask({ title: 'Từ chối thông tin này?', msg: 'Thông tin sẽ không được cập nhật vào gia phả.', ok: 'Từ chối', danger: true }))) return;
+    try { await D.resolveCollect(x.id, 'rejected'); closeSheet(true); toast('Đã từ chối'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
+  };
+}
+function bindCollectCards(m, list, rerender) {
+  m.querySelectorAll('[data-cview]').forEach((b) => (b.onclick = () => reviewSheet(list.find((y) => y.id === b.dataset.cview), rerender)));
   m.querySelectorAll('[data-cno]').forEach((b) => (b.onclick = async () => {
     try { await D.resolveCollect(b.dataset.cno, 'rejected'); toast('Đã đóng'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
   }));
@@ -1497,6 +1523,7 @@ function userForm(u) {
 
 // ======================= Tab Đề xuất =======================
 async function renderProps(m) {
+  if (!S.A) { S.propsWait = true; m.innerHTML = '<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải gia phả…</div></div>'; return; }
   m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
   let list, cl;
   try { [list, cl] = await Promise.all([D.listProposals(S.tree.id), D.listCollectSubs(S.tree.id)]); } catch (e) { m.innerHTML = `<div class="page"><div class="empty">${esc(D.errMsg(e))}</div></div>`; return; }

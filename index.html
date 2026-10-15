@@ -339,6 +339,15 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .switch input:disabled + span { opacity: .5; }
   .ckcol { display: flex; flex-direction: column; }
   .ckcol .ck { padding: 4px 0; }
+  .rvtable { margin-top: 8px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .rvh, .rvr { display: grid; grid-template-columns: 28px minmax(72px, .8fr) 1fr 1fr; gap: 8px; align-items: center; padding: 9px 10px; border-top: 1px solid var(--line); }
+  .rvh { border-top: 0; background: var(--bg); font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
+  .rvr span { min-width: 0; overflow-wrap: anywhere; }
+  .rvr .old { color: var(--muted); }
+  .rvr.chg { background: var(--ok-bg); cursor: pointer; }
+  .rvr.chg .old { text-decoration: line-through; }
+  .rvr.chg .new { color: var(--ok); font-weight: 700; }
+  .rvr input { width: 18px; height: 18px; accent-color: var(--accent); }
   img.mini { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; vertical-align: middle; }
   .tog circle { fill: var(--card-solid); stroke: var(--link); stroke-width: 1.5; }
   .tog text { font-size: 11px; font-weight: 700; fill: var(--text); }
@@ -384,6 +393,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792059859463"></script>
+<script type="module" src="js/app.js?v=1792060259681"></script>
 </body>
 </html>
