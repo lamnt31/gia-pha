@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, fileToAvatar } from './ui.js?v=1792045184210';
-import * as D from './data.js?v=1792045184210';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792045184210';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792045184210';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, fileToAvatar } from './ui.js?v=1792045923739';
+import * as D from './data.js?v=1792045923739';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792045923739';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792045923739';
 
-const APP_VER = '15/10 13:19';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 13:32';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -38,6 +38,26 @@ function gioOf(p) {
   if (l && l[0] && l[1]) return [l[0], l[1]];
   const x = lunarOf(p.deathSolar);
   return x ? [x[0], x[1]] : null;     // mất vào tháng nhuận → giỗ theo tháng thường
+}
+/**
+ * Mặt nạ ô ngày: chỉ giữ số, tự chèn "/" thành dd/mm/yyyy.
+ * kind 'solar': gõ tối đa 4 số thì giữ nguyên (= chỉ nhớ năm), từ số thứ 5 mới tách dd/mm/yyyy.
+ * kind 'dm' (ngày âm để tính giỗ): tách ngay dd/mm, có thể thêm /yyyy.
+ * Dán "5-3-1950" → "05/03/1950".
+ */
+let AUTO_FILL = false;
+function maskDate(el, e) {
+  const raw = el.value, kind = el.dataset.mask;
+  let out;
+  const parts = raw.split(/[^0-9]+/).filter(Boolean);
+  if (e && e.inputType === 'insertFromPaste' && parts.length >= 2) {
+    out = parts.slice(0, 3).map((p, i) => (i < 2 ? p.padStart(2, '0').slice(-2) : p.slice(0, 4))).join('/');
+  } else {
+    const d = raw.replace(/[^0-9]/g, '').slice(0, 8);
+    out = kind === 'solar' && d.length <= 4 ? d
+      : d.slice(0, 2) + (d.length > 2 ? '/' + d.slice(2, 4) : '') + (d.length > 4 ? '/' + d.slice(4) : '');
+  }
+  if (out !== raw) el.value = out;
 }
 const isDead = (p) => p.alive === false || !!(p.deathSolar || p.deathLunar);
 const fmtD = (a) => `${String(a[0]).padStart(2, '0')}/${String(a[1]).padStart(2, '0')}/${a[2]}`;
@@ -475,14 +495,14 @@ function personForm(p, ctx) {
     </div>
     <div class="fsec"><i class="fa-solid fa-cake-candles"></i>Ngày sinh</div>
     <div class="fgrid">
-      <div class="fld"><label>Dương lịch</label><input id="f_birthSolar" value="${esc(d.birthSolar || '')}" placeholder="dd/mm/yyyy hoặc năm" inputmode="numeric"><div class="hint" id="h_birthSolar"></div></div>
-      <div class="fld"><label>Âm lịch (nếu chỉ biết âm)</label><input id="f_birthLunar" value="${esc(d.birthLunar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric"><div class="hint" id="h_birthLunar"></div></div>
+      <div class="fld"><label>Dương lịch</label><input id="f_birthSolar" value="${esc(d.birthSolar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_birthSolar">Chỉ nhớ năm: gõ 4 số</div></div>
+      <div class="fld"><label>Âm lịch</label><input id="f_birthLunar" value="${esc(d.birthLunar || '')}" placeholder="tự tính từ ngày dương" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_birthLunar"></div></div>
     </div>
     <label class="ck"><input type="checkbox" id="f_dead" ${d.alive === false || d.deathSolar || d.deathLunar ? 'checked' : ''}>Đã mất</label>
     <div id="deadBox">
       <div class="fgrid">
-        <div class="fld"><label>Ngày mất dương lịch</label><input id="f_deathSolar" value="${esc(d.deathSolar || '')}" placeholder="dd/mm/yyyy hoặc năm" inputmode="numeric"><div class="hint" id="h_deathSolar"></div></div>
-        <div class="fld"><label>Ngày mất âm lịch (giỗ)</label><input id="f_deathLunar" value="${esc(d.deathLunar || '')}" placeholder="dd/mm hoặc dd/mm/yyyy" inputmode="numeric"><div class="hint" id="h_deathLunar"></div></div>
+        <div class="fld"><label>Ngày mất dương lịch</label><input id="f_deathSolar" value="${esc(d.deathSolar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_deathSolar">Chỉ nhớ năm: gõ 4 số</div></div>
+        <div class="fld"><label>Ngày mất âm lịch (giỗ)</label><input id="f_deathLunar" value="${esc(d.deathLunar || '')}" placeholder="tự tính từ ngày dương" inputmode="numeric" maxlength="10" data-mask="dm"><div class="hint" id="h_deathLunar"></div></div>
         <div class="fld full"><label>Nơi an táng</label><input id="f_burial" value="${esc(d.burial || '')}"></div>
       </div>
     </div>
@@ -504,16 +524,32 @@ function personForm(p, ctx) {
   const deadToggle = () => ($('deadBox').hidden = !$('f_dead').checked);
   $('f_dead').onchange = deadToggle; deadToggle();
   sh.querySelectorAll('input[name=g]').forEach((r) => (r.onchange = () => ($('fph').className = 'ph ' + (r.value === 'f' ? 'f' : 'm'))));
+  // ô ngày: chỉ gõ số, tự chèn "/" (dd/mm/yyyy). Ô dương lịch: gõ 4 số = chỉ nhớ năm.
+  sh.querySelectorAll('[data-mask]').forEach((el) => el.addEventListener('input', (e) => maskDate(el, e)));
+  // nhập ngày dương đầy đủ → tự điền ngày âm (trừ khi người dùng đã tự sửa ô âm)
+  const lunarStr = (v) => { const l = lunarOf(v); return l ? fmtD(l) : ''; };
+  for (const [sol, lun] of [['birthSolar', 'birthLunar'], ['deathSolar', 'deathLunar']]) {
+    const a = $('f_' + sol), b = $('f_' + lun);
+    if (!b.value || b.value === lunarStr(a.value)) b.dataset.auto = '1';
+    b.addEventListener('input', () => { if (!AUTO_FILL) delete b.dataset.auto; });
+    a.addEventListener('input', () => {
+      if (!b.dataset.auto) return;
+      const v = lunarStr(a.value);
+      if (v === b.value) return;
+      b.value = v; AUTO_FILL = true; b.dispatchEvent(new Event('input')); AUTO_FILL = false;
+    });
+  }
   // gợi ý đổi âm / dương khi gõ ngày
-  const hint = (id, fn) => { const el = $('f_' + id), h = $('h_' + id); const run = () => { const v = el.value.trim(); if (!v) { h.textContent = ''; h.className = 'hint'; return; } const r = fn(v); h.textContent = r[0]; h.className = 'hint ' + (r[1] || ''); }; el.addEventListener('input', run); run(); };
+  const hint = (id, fn, empty = '') => { const el = $('f_' + id), h = $('h_' + id); const run = () => { const v = el.value.trim(); if (!v) { h.textContent = empty; h.className = 'hint'; return; } const r = fn(v); h.textContent = r[0]; h.className = 'hint ' + (r[1] || ''); }; el.addEventListener('input', run); run(); };
   const solarHint = (v) => { if (!validDate(v)) return ['Ngày không hợp lệ', 'bad']; const l = lunarOf(v); return l ? ['Âm: ' + formatLunar(l), 'ok'] : [yearOf(v) ? 'Năm ' + yearCanChi(yearOf(v)) : '']; };
   const lunarHint = (v) => {
+    if ($('f_birthLunar').dataset.auto && lunarOf($('f_birthSolar').value)) return ['Tự tính: ' + formatLunar(lunarOf($('f_birthSolar').value)), 'ok'];
     if (!validDate(v)) return ['Ngày không hợp lệ', 'bad'];
     const x = parseDate(v); if (!(x[0] && x[1] && x[2])) return [x[2] ? 'Năm ' + yearCanChi(x[2]) : ''];
     const s = lunarToSolar(x[0], x[1], x[2]); return s[0] ? ['Dương: ' + fmtD(s), 'ok'] : ['Ngày âm không tồn tại', 'bad'];
   };
-  hint('birthSolar', solarHint); hint('deathSolar', solarHint); hint('birthLunar', lunarHint);
-  hint('deathLunar', (v) => { if (!validDate(v)) return ['Ngày không hợp lệ', 'bad']; const x = parseDate(v); if (!(x[0] && x[1])) return ['Cần ngày và tháng âm để tính giỗ', 'bad']; const n = nextDeathAnniversary(x[0], x[1]); return n ? [`Giỗ năm nay: ${fmtD(n.solar)}`, 'ok'] : ['']; });
+  hint('birthSolar', solarHint, 'Chỉ nhớ năm: gõ 4 số'); hint('deathSolar', solarHint, 'Chỉ nhớ năm: gõ 4 số'); hint('birthLunar', lunarHint);
+  hint('deathLunar', (v) => { if (!validDate(v)) return ['Ngày không hợp lệ', 'bad']; const dl = $('f_deathLunar').dataset.auto && lunarOf($('f_deathSolar').value); const x = parseDate(v); if (!(x[0] && x[1])) return ['Cần ngày và tháng âm để tính giỗ', 'bad']; const n = nextDeathAnniversary(x[0], x[1]); return n ? [`${dl ? 'Tự tính ' + formatLunar(dl) + ' · ' : ''}Giỗ năm nay: ${fmtD(n.solar)}`, 'ok'] : ['']; });
   // ảnh
   $('fphb').onclick = () => { $('photoIn').value = ''; $('photoIn').click(); };
   $('photoIn').onchange = async () => {
