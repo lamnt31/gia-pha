@@ -197,6 +197,9 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .lock { width: 64px; height: 64px; margin: 0 auto; border-radius: 20px; display: grid; place-items: center; color: #fff; font-size: 26px;
           background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 14px 30px -12px var(--accent); }
   .gt { margin: 14px 0 4px; font-size: calc(var(--font-size) + 7px); font-weight: 800; }
+  .gclan { margin: 0 0 14px; color: var(--accent); font-weight: 700; font-size: var(--fs-md); }
+  .ghi { padding: 10px 12px 2px; border-top: 1px dashed var(--line); font-size: var(--fs-lg); }
+  .ghi b { font-weight: 800; }
   .gs { margin: 0 0 18px; color: var(--muted); font-size: var(--fs-md); }
   .gbox .mav.big { width: 76px; height: 76px; margin: 0 auto; font-size: 32px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 14px 30px -12px var(--accent); }
   .gfld { position: relative; margin-bottom: 10px; }
@@ -349,6 +352,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792048290959"></script>
+<script type="module" src="js/app.js?v=1792049509823"></script>
 </body>
 </html>

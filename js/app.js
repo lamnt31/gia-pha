@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792048290959';
-import * as D from './data.js?v=1792048290959';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792048290959';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792048290959';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792049509823';
+import * as D from './data.js?v=1792049509823';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792049509823';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792049509823';
 
-const APP_VER = '15/10 14:11';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 14:31';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -160,10 +160,11 @@ const greet = () => { const h = new Date().getHours(); return h < 11 ? 'Chào bu
 function renderLogin(err = '', other = false) {
   const accs = savedAccs(), acc = !other && accs[0];
   $('gate').innerHTML = `<form class="gbox" id="lf" autocomplete="on">
-    ${acc ? `<div class="mav big">${esc(initials(acc.name || acc.user))}</div>
-      <p class="gs" style="margin:14px 0 2px">${greet()},</p>
-      <div class="gt" style="margin:0 0 4px">${esc(acc.name || acc.user)}</div>
-      <p class="gs"><i class="fa-solid fa-landmark"></i> ${esc(acc.clan || acc.code)} · @${esc(acc.user)}</p>
+    ${acc ? `<div class="lock"><i class="fa-solid fa-sitemap"></i></div>
+      <div class="gt">Gia phả</div>
+      <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(acc.clan || acc.code)}</p>
+      <div class="ghi">${greet()}, <b>${esc(acc.name || acc.user)}</b></div>
+      <p class="gs"><i class="fa-solid fa-user"></i> ${esc(acc.user)}</p>
       <input type="text" autocomplete="username" value="${esc(acc.code + '/' + acc.user)}" hidden>`
     : `<div class="lock"><i class="fa-solid fa-sitemap"></i></div>
       <div class="gt">Gia phả</div>
