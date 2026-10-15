@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792060259681';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792060443340';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -515,7 +515,7 @@ export async function syncEvents(treeId, items) {
 // Biên tập tạo link kèm bản chép thông tin hiện tại của các thành viên trong phạm vi → gửi vào nhóm / cho chủ hộ.
 // Mỗi người mở link (phiên ẩn danh) gửi 1 bản cho mỗi thành viên, có thể thêm người mới (con, vợ/chồng).
 // Biên tập duyệt ở "Duyệt thông tin", chọn trường áp dụng vào hồ sơ.
-export const COLLECT_FIELDS = ['name', 'nick', 'alias', 'gender', 'branch', 'order', 'adopted', 'birthSolar', 'birthLunar', 'alive', 'deathSolar', 'deathLunar', 'birthPlace', 'address', 'burial', 'job', 'note', 'photo'];
+export const COLLECT_FIELDS = ['name', 'nick', 'alias', 'gender', 'branch', 'order', 'adopted', 'birthSolar', 'birthLunar', 'alive', 'deathSolar', 'deathLunar', 'birthPlace', 'address', 'phone', 'email', 'burial', 'job', 'note', 'photo'];
 const COLLECT_MAX = 300;
 /** list: [{p, info}] – thành viên trong phạm vi (người đầu tiên = người gốc) */
 export async function createCollectLink(tree, list, { scope = 'one', allowAdd = false, days = 7 } = {}) {
