@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792047431474';
-import * as D from './data.js?v=1792047431474';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792047431474';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792047431474';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792047670108';
+import * as D from './data.js?v=1792047670108';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792047670108';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792047670108';
 
-const APP_VER = '15/10 13:57';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 14:01';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -557,17 +557,24 @@ function personForm(p, ctx) {
   sh.querySelectorAll('input[name=g]').forEach((r) => (r.onchange = () => ($('fph').className = 'ph ' + (r.value === 'f' ? 'f' : 'm'))));
   // ô ngày: chỉ gõ số, tự chèn "/" (dd/mm/yyyy). Ô dương lịch: gõ 4 số = chỉ nhớ năm.
   sh.querySelectorAll('[data-mask]').forEach((el) => el.addEventListener('input', (e) => maskDate(el, e)));
-  // nhập ngày dương đầy đủ → tự điền ngày âm (trừ khi người dùng đã tự sửa ô âm)
+  // Tự tính 2 chiều: nhập đủ ngày dương → điền ngày âm; nhập đủ ngày âm (có năm) → điền ngày dương.
+  // Chỉ điền vào ô đang trống hoặc trước đó do app tự điền (data-auto); ô người dùng tự gõ thì giữ nguyên.
   const lunarStr = (v) => { const l = lunarOf(v); return l ? fmtD(l) : ''; };
+  const solarStr = (v) => { const x = fullDate(v); if (!x) return ''; const s = lunarToSolar(x[0], x[1], x[2]); return s[0] ? fmtD(s) : ''; };
+  const fill = (el, v) => { if (v === el.value) return; el.value = v; AUTO_FILL = true; el.dispatchEvent(new Event('input')); AUTO_FILL = false; };
   for (const [sol, lun] of [['birthSolar', 'birthLunar'], ['deathSolar', 'deathLunar']]) {
     const a = $('f_' + sol), b = $('f_' + lun);
     if (!b.value || b.value === lunarStr(a.value)) b.dataset.auto = '1';
-    b.addEventListener('input', () => { if (!AUTO_FILL) delete b.dataset.auto; });
+    if (!a.value || (b.value && a.value === solarStr(b.value))) a.dataset.auto = '1';
     a.addEventListener('input', () => {
-      if (!b.dataset.auto) return;
-      const v = lunarStr(a.value);
-      if (v === b.value) return;
-      b.value = v; AUTO_FILL = true; b.dispatchEvent(new Event('input')); AUTO_FILL = false;
+      if (AUTO_FILL) return;
+      delete a.dataset.auto;                       // người dùng tự gõ ngày dương
+      if (b.dataset.auto || !b.value) { b.dataset.auto = '1'; fill(b, lunarStr(a.value)); }
+    });
+    b.addEventListener('input', () => {
+      if (AUTO_FILL) return;
+      delete b.dataset.auto;                       // người dùng tự gõ ngày âm
+      if (a.dataset.auto || !a.value) { a.dataset.auto = '1'; fill(a, solarStr(b.value)); }
     });
   }
   // gợi ý đổi âm / dương khi gõ ngày
