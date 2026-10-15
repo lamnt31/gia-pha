@@ -330,6 +330,15 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .scantop b { display: block; font-size: var(--fs-xl); } .scantop small { opacity: .85; }
   .scanclose { position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); transform: translateX(-50%); height: 44px; padding: 0 22px;
                border-radius: 99px; border: 0; background: rgba(255,255,255,.92); color: #111; font: inherit; font-weight: 700; cursor: pointer; }
+  .switch { position: relative; width: 48px; height: 28px; flex: 0 0 auto; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--line); transition: .2s; cursor: pointer; }
+  .switch span::before { content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: .2s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::before { transform: translateX(20px); }
+  .switch input:disabled + span { opacity: .5; }
+  .ckcol { display: flex; flex-direction: column; }
+  .ckcol .ck { padding: 4px 0; }
   .tog circle { fill: var(--card-solid); stroke: var(--link); stroke-width: 1.5; }
   .tog text { font-size: 11px; font-weight: 700; fill: var(--text); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
@@ -374,6 +383,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792056636197"></script>
+<script type="module" src="js/app.js?v=1792057291313"></script>
 </body>
 </html>

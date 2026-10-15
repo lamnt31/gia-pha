@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey } from './firebase-config.js?v=1792056636197';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792057291313';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -458,4 +458,54 @@ export async function leaveShare(treeId) {
   b.delete(doc(db, 'shares', `${treeId}_${me.uid}`));
   await b.commit();
   await loadShares();
+}
+
+// ======================= Thông báo đẩy (Web Push) – giỗ, sinh nhật (BA-thong-bao.md) =======================
+// Thiết bị đăng ký → lưu pushSubs/{id}. Máy gửi theo lịch (repo gia-pha-cron, 7h sáng) đọc bảng sự kiện của các gia phả
+// mà tài khoản có quyền xem (kể cả được chia sẻ) rồi gửi thông báo.
+export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!vapidPublicKey;
+const b64ToU8 = (s) => { const p = '='.repeat((4 - (s.length % 4)) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...b].map((c) => c.charCodeAt(0))); };
+const subId = async (endpoint) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint)))].slice(0, 20).map((x) => x.toString(16).padStart(2, '0')).join('');
+/** Trạng thái thông báo trên máy này: { supported, permission, on, days, kinds } */
+export async function pushStatus() {
+  if (!pushSupported()) return { supported: false };
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg && (await reg.pushManager.getSubscription());
+  let saved = null;
+  if (sub) { try { const s = await getDoc(doc(db, 'pushSubs', await subId(sub.endpoint))); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* chưa có */ } }
+  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn'] };
+}
+export async function enablePush({ days, kinds }) {
+  if (!pushSupported()) throw new Error('Trình duyệt này chưa hỗ trợ thông báo đẩy.');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Bạn chưa cho phép thông báo. Hãy bật lại quyền Thông báo cho trang này trong cài đặt trình duyệt.');
+  const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('sw.js'));
+  await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) }));
+  await setDoc(doc(db, 'pushSubs', await subId(sub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(sub)), days, kinds,
+    ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
+}
+export async function disablePush() {
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = reg && (await reg.pushManager.getSubscription());
+  if (!sub) return;
+  try { await deleteDoc(doc(db, 'pushSubs', await subId(sub.endpoint))); } catch (e) { /* đã xóa */ }
+  await sub.unsubscribe();
+}
+/** Thông báo thử ngay trên máy này (kiểm tra hiển thị) */
+export async function testNotify(title, body) {
+  const reg = await navigator.serviceWorker.ready;
+  await reg.showNotification(title, { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: location.pathname + '?tab=gio' } });
+}
+
+/** Bảng sự kiện thu gọn của 1 gia phả (máy gửi chỉ đọc 1 tài liệu). Chỉ ghi khi có thay đổi. */
+const EVH = new Map();
+export async function syncEvents(treeId, items) {
+  const json = JSON.stringify(items);
+  let h = 0; for (let i = 0; i < json.length; i++) h = (h * 31 + json.charCodeAt(i)) | 0;
+  const hash = String(h >>> 0) + ':' + items.length;
+  if (!EVH.has(treeId)) { try { const s = await getDoc(doc(db, 'trees', treeId, 'meta', 'events')); EVH.set(treeId, s.exists() ? s.data().hash : ''); } catch (e) { EVH.set(treeId, ''); } }
+  if (EVH.get(treeId) === hash) return;
+  await setDoc(doc(db, 'trees', treeId, 'meta', 'events'), { items, hash, updatedAt: serverTimestamp() });
+  EVH.set(treeId, hash);
 }

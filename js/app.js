@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792056636197';
-import * as D from './data.js?v=1792056636197';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792056636197';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792056636197';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792057291313';
+import * as D from './data.js?v=1792057291313';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792057291313';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792057291313';
 
-const APP_VER = '15/10 16:30';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 16:41';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -102,7 +102,8 @@ const pname = (p) => (p && p.name) || 'Chưa rõ tên';
 { const u = new URL(location.href), c = u.searchParams.get('link'), sh = u.searchParams.get('share');
   if (c) { store('pendingLink', c); u.searchParams.delete('link'); }
   if (sh) { store('pendingShare', sh); u.searchParams.delete('share'); }
-  if (c || sh) history.replaceState(null, '', u); }
+  const tb = u.searchParams.get('tab'); if (tb) { store('tab', tb); u.searchParams.delete('tab'); }
+  if (c || sh || tb) history.replaceState(null, '', u); }
 applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
 initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
@@ -341,6 +342,7 @@ async function openTree(id, first) {
     try {
       S.persons = list; S.A = analyze(list, S.tree.anchorId);
       renderTab(true);
+      scheduleEventsSync();
       if (S.jumpAfterLoad && S.A.byId.has(S.jumpAfterLoad)) { const j = S.jumpAfterLoad; S.jumpAfterLoad = null; go('tree'); setTimeout(() => jumpTo(j), 150); }
       if (store('pendingLink') && list.length && !S.linkBusy) {
         const c = store('pendingLink'); store('pendingLink', null); S.linkBusy = true;
@@ -1025,6 +1027,65 @@ async function receiveShare(code) {
   catch (e) { busy(); toast(D.errMsg(e), 5000); }
 }
 
+// ======================= Thông báo đẩy: giỗ, sinh nhật (BA-thong-bao.md) =======================
+/** Bảng sự kiện thu gọn của gia phả → máy gửi lúc 7h sáng chỉ đọc 1 tài liệu */
+function eventItems() {
+  const out = [];
+  for (const p of S.persons) {
+    if (isDead(p)) { const g = gioOf(p); if (g) out.push({ id: p.id, n: pname(p), k: 'gio', d: g[0], m: g[1] }); continue; }
+    const s = fullDate(p.birthSolar), l = fullDate(p.birthLunar);
+    if (s) out.push({ id: p.id, n: pname(p), k: 'sn', d: s[0], m: s[1], y: s[2] });
+    else if (l) out.push({ id: p.id, n: pname(p), k: 'sn', d: l[0], m: l[1], y: l[2], l: 1 });
+  }
+  return out.sort((a, b) => (a.id < b.id ? -1 : 1));
+}
+let EV_T = 0;
+function scheduleEventsSync() {
+  if (!S.tree || !canEdit()) return;
+  clearTimeout(EV_T);
+  const t = S.tree.id;
+  EV_T = setTimeout(() => { if (S.tree && S.tree.id === t) D.syncEvents(t, eventItems()).catch(() => {}); }, 4000);
+}
+
+const PUSH_DAYS = [[0, 'Đúng ngày'], [1, 'Trước 1 ngày'], [3, 'Trước 3 ngày'], [7, 'Trước 7 ngày']];
+async function pushSettings() {
+  openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Thông báo</h2><div class="empty" style="padding:20px"><i class="fa-solid fa-circle-notch fa-spin"></i></div>`);
+  let st;
+  try { st = await D.pushStatus(); } catch (e) { st = { supported: false }; }
+  const iosNotInstalled = isIOS && !standalone();
+  const days = st.days || [0, 3], kinds = st.kinds || ['gio', 'sn'];
+  $('sheet').innerHTML = `<div class="grab"></div><h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Thông báo</h2>
+    <p style="margin:0;color:var(--muted)">Mỗi sáng <b>7h</b>, app báo ngày giỗ, sinh nhật sắp tới của <b>mọi gia phả bạn xem được</b>, kể cả gia phả được chia sẻ.</p>
+    ${!st.supported || iosNotInstalled ? `<div class="panel" style="margin-top:12px"><div class="item" style="cursor:default"><div class="ic warn"><i class="fa-solid fa-triangle-exclamation"></i></div><div class="t"><b>${iosNotInstalled ? 'iPhone: cần cài app ra màn hình chính' : 'Trình duyệt này chưa hỗ trợ thông báo'}</b>
+      <span>${iosNotInstalled ? 'Mở bằng Safari → Chia sẻ → Thêm vào MH chính, rồi mở app từ màn hình chính và bật thông báo (iOS 16.4 trở lên).' : 'Hãy dùng Chrome hoặc Edge (Android, máy tính), hoặc app đã cài trên iPhone.'}</span></div></div></div>` : ''}
+    <div class="rows">
+      <div class="cfgrow"><div><b>Nhận thông báo trên máy này</b><small>${st.on ? 'Đang bật' : st.permission === 'denied' ? 'Trình duyệt đang chặn thông báo' : 'Đang tắt'}</small></div>
+        <label class="switch"><input type="checkbox" id="pushOn" ${st.on ? 'checked' : ''} ${st.supported && !iosNotInstalled ? '' : 'disabled'}><span></span></label></div>
+      <div class="cfgrow" style="align-items:flex-start"><div><b>Báo trước</b><small>Chọn một hoặc nhiều</small></div>
+        <div class="ckcol">${PUSH_DAYS.map(([v, l]) => `<label class="ck"><input type="checkbox" name="pd" value="${v}" ${days.includes(v) ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
+      <div class="cfgrow" style="align-items:flex-start"><div><b>Loại</b></div>
+        <div class="ckcol"><label class="ck"><input type="checkbox" name="pk" value="gio" ${kinds.includes('gio') ? 'checked' : ''}>Ngày giỗ</label><label class="ck"><input type="checkbox" name="pk" value="sn" ${kinds.includes('sn') ? 'checked' : ''}>Sinh nhật</label></div></div>
+    </div>
+    <div class="sacts"><button class="abtn blue" id="pushSave"><i class="fa-solid fa-check"></i>Lưu</button><button class="abtn" id="pushTest" ${st.supported && !iosNotInstalled ? '' : 'disabled'}><i class="fa-solid fa-bell"></i>Gửi thử</button></div>
+    <p class="note">Mỗi máy (điện thoại, máy tính) bật riêng. Đổi tài khoản trên cùng máy thì thông báo theo tài khoản bật gần nhất.</p>`;
+  const read = () => ({ days: [...$('sheet').querySelectorAll('input[name=pd]:checked')].map((x) => Number(x.value)), kinds: [...$('sheet').querySelectorAll('input[name=pk]:checked')].map((x) => x.value) });
+  $('pushSave').onclick = async () => {
+    const v = read(), on = $('pushOn').checked;
+    if (on && (!v.days.length || !v.kinds.length)) return toast('Chọn ít nhất 1 mốc báo trước và 1 loại');
+    busy('Đang lưu…');
+    try { if (on) await D.enablePush(v); else await D.disablePush(); busy(); toast(on ? 'Đã bật thông báo – mỗi sáng 7h' : 'Đã tắt thông báo'); closeSheet(true); }
+    catch (e) { busy(); toast(D.errMsg(e), 6000); }
+  };
+  $('pushTest').onclick = async () => {
+    try {
+      if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') return toast('Bạn chưa cho phép thông báo', 4000);
+      const U = S.tree && S.A ? upcoming() : { gio: [], sn: [] }, x = [...U.gio, ...U.sn].sort((a, b) => a.n.daysLeft - b.n.daysLeft)[0];
+      await D.testNotify('Gia phả – thông báo thử', x ? `${x.n.daysLeft ? 'Còn ' + x.n.daysLeft + ' ngày' : 'Hôm nay'}: ${x.kind === 'gio' ? 'giỗ' : 'sinh nhật'} ${pname(x.p)} (${fmtD(x.n.solar)})` : 'Thông báo hoạt động tốt trên máy này.');
+      toast('Đã gửi thử – xem thông báo của máy');
+    } catch (e) { toast(D.errMsg(e), 4000); }
+  };
+}
+
 // ======================= Nhiều hơn (giống ech-client: header xanh + lưới chức năng theo nhóm) =======================
 function renderMore(m) {
   const a = D.account, groups = {};
@@ -1037,6 +1098,7 @@ function renderMore(m) {
       ${Object.entries(groups).map(([g, arr]) => `<div class="msec">${esc(g)}</div>${cards(arr)}`).join('')}
       <div class="msec">Tài khoản</div>
       <div class="mgrid">
+        <button data-act="push"><i class="fa-solid fa-bell"></i><span>Thông báo</span></button>
         <button data-act="scan"><i class="fa-solid fa-qrcode"></i><span>Quét mã QR</span></button>
         <button data-act="me"><i class="fa-solid fa-id-card"></i><span>Thông tin tài khoản</span></button>
         <button data-act="pw"><i class="fa-solid fa-key"></i><span>Đổi mật khẩu</span></button>
@@ -1049,6 +1111,7 @@ function renderMore(m) {
   m.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => go(el.dataset.go)));
   m.querySelector('[data-act=me]').onclick = editMe;
   m.querySelector('[data-act=scan]').onclick = () => scanAndHandle();
+  m.querySelector('[data-act=push]').onclick = pushSettings;
   m.querySelector('[data-act=pw]').onclick = changePw;
   m.querySelector('[data-act=theme]').onclick = uiSettings;
   bindInstall(m);

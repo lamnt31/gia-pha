@@ -9,3 +9,5 @@ export const firebaseConfig = {
 };
 // Site key reCAPTCHA v3 cho App Check (README bước 6). Để trống = chưa bật.
 export const recaptchaSiteKey = '';
+// Khóa công khai Web Push (VAPID) cho thông báo giỗ / sinh nhật. Khóa bí mật chỉ nằm trong Secrets của repo gia-pha-cron.
+export const vapidPublicKey = 'BJ_1RRY3ga8XhzXxiVmPiFAwehnF5UvSDr-sRcYuOgpDr8CUmekxbTGOmziVfwGDU8ckiAQ5HXhgCtyUQPpzkU0';
