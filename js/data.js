@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey } from './firebase-config.js?v=1792053977162';
+import { firebaseConfig, recaptchaSiteKey } from './firebase-config.js?v=1792055952378';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -358,7 +358,7 @@ export const newPersonId = (treeId) => doc(collection(db, 'trees', treeId, 'pers
 // ======================= Liên kết hồ sơ giữa 2 gia phả (nội – ngoại, họ vợ) =======================
 // Bên B (có hồ sơ) tạo mã hồ sơ → gửi link → bên A chọn người tương ứng trong cây mình → tạo liên kết.
 const randomCode = () => { const a = crypto.getRandomValues(new Uint8Array(18)); return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_'); };
-export async function createShareCode(tree, person, info = '', days = 7) {
+export async function createShareCode(tree, person, info = '', days = 7) {   // link liên kết hồ sơ
   const code = randomCode();
   await setDoc(doc(db, 'shareCodes', code), {
     clan: clan.code, clanName: clan.name || clan.code, tree: tree.id, treeName: tree.name, person: person.id, name: person.name || 'Chưa rõ tên', info,
@@ -396,65 +396,66 @@ export async function listLinks(treeId) {
 }
 export const removeLink = (id) => deleteDoc(doc(db, 'links', id));
 
-// ======================= Chia sẻ gia phả cho tài khoản dòng họ khác (vd chồng xem gia phả họ vợ) =======================
-// Root cây B mời (mã dòng họ + tên đăng nhập người bên A) → người đó Đồng ý → có quyền xem. Rút chia sẻ: mất quyền ngay.
-export let shares = [];          // lời mời đã đồng ý: gia phả được chia sẻ cho tôi
-export let pendingShares = [];   // lời mời đang chờ tôi trả lời
+// ======================= Chia sẻ gia phả bằng LINK / QR (vd chồng xem gia phả họ vợ) =======================
+// Root tạo link (chọn quyền, hạn dùng, 1 người hay nhiều người) → gửi Zalo / QR → người dòng họ khác mở link,
+// đăng nhập bằng tài khoản của họ, bấm Nhận → chỉ tài khoản đó xem được. Rút chia sẻ: mất quyền ngay.
+export let shares = [];   // gia phả được chia sẻ cho tôi
 export async function loadShares() {
-  try {
-    const s = await getDocs(query(collection(db, 'shareInvites'), where('uid', '==', me.uid)));
-    const all = s.docs.map((d) => ({ id: d.id, ...d.data() }));
-    shares = all.filter((x) => x.status === 'accepted');
-    pendingShares = all.filter((x) => x.status === 'pending');
-  } catch (e) { shares = []; pendingShares = []; }
+  try { const s = await getDocs(query(collection(db, 'shares'), where('uid', '==', me.uid))); shares = s.docs.map((d) => ({ id: d.id, ...d.data() })); }
+  catch (e) { shares = []; }
 }
 const SHARE_ROLE = { viewer: 'Chỉ xem', member: 'Xem + gửi đề xuất' };
 export const shareRoleName = (r) => SHARE_ROLE[r] || r;
-/** Root chia sẻ gia phả cho người dùng của dòng họ khác */
-export async function shareTree(tree, code, username, role) {
-  code = code.trim().toLowerCase(); username = username.trim().toLowerCase();
-  if (code === clan.code) throw new Error('Người cùng dòng họ: hãy cấp quyền ở mục Người dùng.');
-  const l = await getDoc(doc(db, 'logins', `${code}_${username}`));
-  if (!l.exists()) throw new Error('Không tìm thấy tên đăng nhập này trong dòng họ đó.');
-  const uid = l.data().uid, id = `${tree.id}_${uid}`;
-  const b = writeBatch(db);
-  b.set(doc(db, 'shareInvites', id), { tree: tree.id, treeName: tree.name, clan: clan.code, clanName: clan.name || clan.code, uid, role,
-    target: `${code}/${username}`, by: me.uid, byName: myName(), status: 'pending', at: serverTimestamp() });
-  b.set(doc(collection(db, 'trees', tree.id, 'log')), { by: me.uid, byName: myName(), at: serverTimestamp(), action: 'share', personId: '', personName: `${code}/${username}`, after: { role } });
-  try { await b.commit(); }
-  catch (e) { if (String(e.code).includes('permission')) throw new Error('Không chia sẻ được: người này đã được mời hoặc đã có quyền.'); throw e; }
+export async function createShareLink(tree, role, single, days = 7) {
+  const code = randomCode();
+  await setDoc(doc(db, 'shareLinks', code), { tree: tree.id, treeName: tree.name, clan: clan.code, clanName: clan.name || clan.code, role, single,
+    usedBy: null, by: me.uid, byName: myName(), createdAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + days * 864e5) });
+  return code;
 }
-/** Danh sách chia sẻ của 1 gia phả (root xem): đang chờ, đã đồng ý, đã từ chối */
+export const treeShareLink = (code) => `${location.origin}${location.pathname}?share=${encodeURIComponent(code)}`;
+export async function peekShareLink(code) {
+  const s = await getDoc(doc(db, 'shareLinks', code));
+  if (!s.exists()) throw new Error('Link chia sẻ không tồn tại hoặc đã bị hủy.');
+  const L = { code, ...s.data() };
+  if (L.expiresAt.toMillis() < Date.now()) throw new Error('Link chia sẻ đã hết hạn. Hãy xin quản trị bên kia gửi link mới.');
+  if (L.single && L.usedBy && L.usedBy !== me.uid) throw new Error('Link này chỉ dùng cho 1 người và đã có người nhận.');
+  return L;
+}
+/** Người mở link bấm Nhận: ghi quyền xem cho chính tài khoản này */
+export async function acceptShareLink(L) {
+  if (L.clan === clan.code) throw new Error('Đây là gia phả của dòng họ bạn – không cần nhận chia sẻ.');
+  const b = writeBatch(db);
+  if (L.single) b.update(doc(db, 'shareLinks', L.code), { usedBy: me.uid, usedByName: myName(), usedAt: serverTimestamp() });
+  b.set(doc(db, 'shares', `${L.tree}_${me.uid}`), { tree: L.tree, treeName: L.treeName, clan: L.clan, clanName: L.clanName, uid: me.uid, role: L.role, via: L.code,
+    name: myName(), fromClan: clan.code, fromClanName: clan.name || clan.code, username: account.username, at: serverTimestamp() });
+  b.set(doc(db, 'trees', L.tree, 'members', me.uid), { role: L.role, name: myName(), shared: true, via: L.code, fromClan: clan.code, username: account.username });
+  try { await b.commit(); }
+  catch (e) { if (String(e.code).includes('permission')) throw new Error('Không nhận được: link hết hạn, đã bị hủy, đã có người dùng, hoặc bạn đã xem gia phả này rồi.'); throw e; }
+  await loadShares();
+}
+/** Root: link đang có + ai đang xem */
+export async function listShareLinks(treeId) {
+  const s = await getDocs(query(collection(db, 'shareLinks'), where('tree', '==', treeId)));
+  return s.docs.map((d) => ({ code: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+}
 export async function listShares(treeId) {
-  const s = await getDocs(query(collection(db, 'shareInvites'), where('tree', '==', treeId)));
+  const s = await getDocs(query(collection(db, 'shares'), where('tree', '==', treeId)));
   return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
 }
-/** Root rút chia sẻ: xóa quyền + lời mời trong 1 lượt → mất quyền ngay */
-export async function revokeShare(inv) {
+export const cancelShareLink = (code) => deleteDoc(doc(db, 'shareLinks', code));
+/** Root rút chia sẻ: xóa quyền + bản ghi trong 1 lượt → mất quyền ngay */
+export async function revokeShare(sh) {
   const b = writeBatch(db);
-  b.delete(doc(db, 'trees', inv.tree, 'members', inv.uid));
-  b.delete(doc(db, 'shareInvites', inv.id));
-  b.set(doc(collection(db, 'trees', inv.tree, 'log')), { by: me.uid, byName: myName(), at: serverTimestamp(), action: 'unshare', personId: '', personName: inv.name || inv.target });
+  b.delete(doc(db, 'trees', sh.tree, 'members', sh.uid));
+  b.delete(doc(db, 'shares', sh.id));
+  b.set(doc(collection(db, 'trees', sh.tree, 'log')), { by: me.uid, byName: myName(), at: serverTimestamp(), action: 'unshare', personId: '', personName: `${sh.name || ''} (${sh.fromClanName || ''})` });
   await b.commit();
-}
-/** Người được mời trả lời */
-export async function answerShare(inv, accept) {
-  const ref = doc(db, 'shareInvites', inv.id);
-  if (!accept) { await updateDoc(ref, { status: 'declined', answeredAt: serverTimestamp() }); }
-  else {
-    const b = writeBatch(db);
-    b.set(doc(db, 'trees', inv.tree, 'members', me.uid), { role: inv.role, name: myName(), shared: true, fromClan: clan.code, username: account.username });
-    b.update(ref, { status: 'accepted', answeredAt: serverTimestamp(), name: myName() });
-    await b.commit();
-  }
-  await loadShares();
 }
 /** Người được chia sẻ tự bỏ theo dõi */
 export async function leaveShare(treeId) {
-  const inv = shares.find((x) => x.tree === treeId);
   const b = writeBatch(db);
   b.delete(doc(db, 'trees', treeId, 'members', me.uid));
-  if (inv) b.delete(doc(db, 'shareInvites', inv.id));
+  b.delete(doc(db, 'shares', `${treeId}_${me.uid}`));
   await b.commit();
   await loadShares();
 }

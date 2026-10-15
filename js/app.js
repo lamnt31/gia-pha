@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792053977162';
-import * as D from './data.js?v=1792053977162';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792053977162';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792053977162';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792055952378';
+import * as D from './data.js?v=1792055952378';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792055952378';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792055952378';
 
-const APP_VER = '15/10 15:46';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 16:19';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -99,7 +99,10 @@ const avatar = (p, cls = 'ic') => `<div class="${cls} ${p.gender === 'f' ? 'f' :
 const pname = (p) => (p && p.name) || 'Chưa rõ tên';
 
 // ======================= Khởi động =======================
-{ const u = new URL(location.href), c = u.searchParams.get('link'); if (c) { store('pendingLink', c); u.searchParams.delete('link'); history.replaceState(null, '', u); } }
+{ const u = new URL(location.href), c = u.searchParams.get('link'), sh = u.searchParams.get('share');
+  if (c) { store('pendingLink', c); u.searchParams.delete('link'); }
+  if (sh) { store('pendingShare', sh); u.searchParams.delete('share'); }
+  if (c || sh) history.replaceState(null, '', u); }
 applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
 initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
@@ -111,7 +114,7 @@ D.onUser(async (u, err) => {
     return;
   }
   $('gate').hidden = true; $('app').hidden = false;
-  if (D.pendingShares.length) { S.tab = 'home'; store('tab', 'home'); setTimeout(() => toast(`Bạn có ${D.pendingShares.length} lời mời xem gia phả – xem ở Tổng quan`, 4500), 800); }
+  { const ps = store('pendingShare'); if (ps) { store('pendingShare', null); setTimeout(() => receiveShare(ps), 900); } }
   rememberAcc({ code: D.clan.code, user: D.account.username, name: D.account.name || '', clan: D.clan.name || '' });
   const trees = D.myTrees(), last = store('lastTree'), oal = store('openAfterLogin');
   if (oal && oal.clan === D.clan.code) { store('openAfterLogin', null); if (trees.some((t) => t.id === oal.tree)) { S.jumpAfterLoad = oal.person; return openTree(oal.tree, true); } }
@@ -274,6 +277,7 @@ function shell() {
     <div class="top">
       <button class="tsw" id="treeSw" ${tr.length > 1 ? '' : 'disabled'}><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
         <small id="tsub">${esc(S.tree ? `${ROLE[S.role]} · ${S.persons.length} người` : D.clan.name || '')}</small>${tr.length > 1 ? '<i class="fa-solid fa-chevron-down"></i>' : ''}</button>
+      <button class="ibtn" id="scanBtn" title="Quét mã QR (nhận chia sẻ / liên kết)"><i class="fa-solid fa-qrcode"></i></button>
       <button class="ibtn" id="themeBtn"></button>
     </div>
     <nav class="nav mob">${mobile.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn' }, 'ntab')}</nav>
@@ -282,6 +286,7 @@ function shell() {
   applyTheme(document.documentElement.dataset.theme);
   $('themeBtn').onclick = toggleTheme;
   $('treeSw').onclick = switchTree;
+  $('scanBtn').onclick = () => scanAndHandle();
   document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => go(b.dataset.tab)));
   renderTab();
 }
@@ -300,9 +305,11 @@ async function switchTree() {
   const tr = D.myTrees();
   const opts = tr.map((t) => [t.id, t.shared ? `${t.name} · ${t.clanName} (được chia sẻ)` : `${t.name} · ${ROLE[t.role]}`]);
   if (D.isRoot() && (D.clan.treeCount || 0) < D.LIMIT_TREES) opts.push(['__new', '+ Tạo gia phả mới']);
+  opts.push(['__scan', '+ Nhận gia phả được chia sẻ (quét QR)']);
   const v = await ask({ title: 'Chọn gia phả', fields: [{ id: 't', type: 'select', value: S.tree ? S.tree.id : '', options: opts }], ok: 'Mở' });
   if (!v) return;
   if (v.t === '__new') return newTree();
+  if (v.t === '__scan') return scanAndHandle();
   if (!S.tree || v.t !== S.tree.id) openTree(v.t);
 }
 
@@ -867,20 +874,25 @@ function bindLinks(p) {
 }
 /** Bên có hồ sơ: tạo mã/link (hạn 7 ngày) gửi cho bên kia */
 async function shareForLink(p) {
+  const v = await ask({ title: 'Gửi link liên kết hồ sơ', msg: `Bên họ kia mở link / quét QR, đăng nhập tài khoản dòng họ của họ, rồi chọn người tương ứng với <b>${esc(pname(p))}</b>.`,
+    fields: [{ id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
+  if (!v) return;
   busy('Đang tạo link…');
   let code;
-  try { code = await D.createShareCode(S.tree, p, [S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · ')); }
+  try { code = await D.createShareCode(S.tree, p, [S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · '), Number(v.d)); }
   catch (e) { busy(); return toast(D.errMsg(e), 4000); }
   busy();
-  const url = D.shareLink(code);
-  const ok = await ask({ title: 'Link liên kết hồ sơ', ok: 'Copy link',
-    msg: `Gửi link này cho <b>quản trị / biên tập bên họ kia</b> (hạn 7 ngày). Họ mở link, đăng nhập tài khoản dòng họ của họ, rồi chọn người tương ứng với <b>${esc(pname(p))}</b> trong gia phả của họ.<br><br><span class="codebox">${esc(url)}</span>` });
-  if (ok) { try { await navigator.clipboard.writeText(`Liên kết hồ sơ "${pname(p)}" (${D.clan.name}) trên Gia phả: ${url}`); toast('Đã copy link – dán gửi qua Zalo'); } catch (e) { toast('Không copy được, hãy bấm giữ link để copy', 4000); } }
+  showShareSheet({ title: 'Link liên kết hồ sơ', url: D.shareLink(code), expiresAt: Date.now() + Number(v.d) * 864e5,
+    text: `Liên kết hồ sơ "${pname(p)}" (${D.clan.name}) trên app Gia phả`,
+    note: `Gửi cho <b>quản trị / biên tập bên họ kia</b> để nối hồ sơ <b>${esc(pname(p))}</b>.` });
 }
 const codeFrom = (v) => { try { return new URL(v).searchParams.get('link') || v; } catch (e) { return v; } };
 /** Bên nhận: liên kết người p (cây đang mở) với hồ sơ trong mã */
 async function linkWithCode(p, code) {
   if (!code) {
+    const how = await pick({ title: 'Liên kết bằng mã', options: [['scan', 'Quét mã QR'], ['paste', 'Dán link / mã']] });
+    if (!how) return;
+    if (how === 'scan') return scanAndHandle(p);
     const v = await ask({ title: 'Liên kết bằng mã', msg: `Dán link hoặc mã liên kết bên họ kia gửi cho <b>${esc(pname(p))}</b>.`, fields: [{ id: 'c', ph: 'Link hoặc mã liên kết' }], ok: 'Tiếp tục', validate: (v) => (!v.c ? 'Chưa nhập mã' : '') });
     if (!v) return;
     code = codeFrom(v.c.trim());
@@ -920,6 +932,97 @@ async function openLinked(o) {
   D.logout();
 }
 
+// ======================= Chia sẻ link: mã QR + gửi Zalo (Web Share) + copy; quét QR bằng camera =======================
+const loadScript = (src, name) => (window[name] ? Promise.resolve(window[name]) : new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = src; s.onload = () => res(window[name]); s.onerror = () => rej(new Error('Không tải được thư viện QR (kiểm tra mạng)')); document.head.appendChild(s);
+}));
+const QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+const JSQR_LIB = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+const fmtTime = (ts) => { const d = ts && ts.toDate ? ts.toDate() : new Date(ts); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${d.toLocaleDateString('vi-VN')}`; };
+const DAYS = [['1', 'Hết hạn sau 1 ngày'], ['7', 'Hết hạn sau 7 ngày'], ['30', 'Hết hạn sau 30 ngày']];
+
+/** Màn chia sẻ chung: QR to + Gửi (Zalo…) + Copy + Tải ảnh QR. Dùng cho link liên kết hồ sơ và link chia sẻ gia phả */
+async function showShareSheet({ title, url, text, note, expiresAt }) {
+  openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}</h2>
+    ${note ? `<p style="margin:0;color:var(--muted)">${note}</p>` : ''}
+    <div class="qrbox" id="qrBox"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+    <p class="qrexp"><i class="fa-regular fa-clock"></i> Hết hạn lúc <b>${esc(fmtTime(expiresAt))}</b></p>
+    <span class="codebox">${esc(url)}</span>
+    <div class="sacts">
+      <button class="abtn blue full" id="shGo"><i class="fa-solid fa-paper-plane"></i>Gửi qua Zalo / ứng dụng khác</button>
+      <button class="abtn" id="shCopy"><i class="fa-regular fa-copy"></i>Copy link</button>
+      <button class="abtn" id="shPng"><i class="fa-solid fa-download"></i>Tải ảnh QR</button>
+    </div>
+    <p class="note">Người nhận: mở app Gia phả, đăng nhập tài khoản dòng họ của họ → bấm <b>icon quét mã <i class="fa-solid fa-qrcode"></i></b> trên thanh đầu → quét mã này. Hoặc bấm vào link được gửi qua Zalo.</p>`);
+  let dataUrl = '';
+  try {
+    const qrcode = await loadScript(QR_LIB, 'qrcode');
+    const q = qrcode(0, 'M'); q.addData(url); q.make();
+    dataUrl = q.createDataURL(8, 16);
+    if ($('qrBox')) $('qrBox').innerHTML = `<img src="${dataUrl}" alt="Mã QR">`;
+  } catch (e) { if ($('qrBox')) $('qrBox').innerHTML = `<small>${esc(e.message)}</small>`; }
+  const msg = `${text}\n${url}`;
+  const copy = async () => { try { await navigator.clipboard.writeText(msg); toast('Đã copy – dán gửi qua Zalo'); } catch (e) { toast('Không copy được, hãy bấm giữ link để copy', 4000); } };
+  $('shCopy').onclick = copy;
+  $('shGo').onclick = async () => {
+    if (navigator.share) { try { await navigator.share({ title, text, url }); } catch (e) { /* bấm hủy */ } }
+    else copy();
+  };
+  $('shPng').onclick = () => { if (!dataUrl) return; const a = document.createElement('a'); a.href = dataUrl; a.download = 'ma-qr-gia-pha.gif'; a.click(); };
+}
+
+/** Quét mã QR bằng camera → trả về chuỗi trong mã (thường là link) */
+function scanQR() {
+  return new Promise((resolve) => {
+    openSheet(`<h2 style="margin:0 0 8px;font-size:var(--fs-2xl)">Quét mã QR</h2>
+      <div class="scanbox"><video id="qrv" playsinline muted></video><div class="scanframe"></div></div>
+      <p class="note" id="qrMsg" style="text-align:center">Đưa mã QR vào khung</p>
+      <div class="sacts"><button class="abtn full" id="qrStop">Đóng</button></div>`, { beforeClose: () => { stop(); return true; } });
+    let stream = null, timer = null, done = false;
+    const stop = () => { done = true; clearTimeout(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); };
+    const finish = (v) => { if (done) return; stop(); closeSheet(true); resolve(v); };
+    $('qrStop').onclick = () => finish(null);
+    (async () => {
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }); }
+      catch (e) { $('qrMsg').textContent = 'Không mở được camera. Hãy cho phép quyền camera, hoặc dán link.'; return; }
+      const v = $('qrv'); if (!v) return stop();
+      v.srcObject = stream; await v.play();
+      let detect;
+      if ('BarcodeDetector' in window) { const bd = new window.BarcodeDetector({ formats: ['qr_code'] }); detect = async () => { const r = await bd.detect(v); return r[0] && r[0].rawValue; }; }
+      else {
+        const jsQR = await loadScript(JSQR_LIB, 'jsQR'), cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+        detect = async () => { cv.width = v.videoWidth; cv.height = v.videoHeight; if (!cv.width) return null; cx.drawImage(v, 0, 0); const r = jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height); return r && r.data; };
+      }
+      const loop = async () => { if (done) return; try { const t = await detect(); if (t) return finish(t); } catch (e) { /* khung hình lỗi */ } timer = setTimeout(loop, 250); };
+      loop();
+    })();
+  });
+}
+/** Xử lý link nhận được (quét QR / dán): ?share= → nhận chia sẻ gia phả; ?link= → liên kết hồ sơ */
+async function handleIncoming(text, person) {
+  let u; try { u = new URL(text); } catch (e) { u = null; }
+  const share = u && u.searchParams.get('share'), link = u ? u.searchParams.get('link') : text;
+  if (share) return receiveShare(share);
+  if (link) return linkWithCode(person || null, link);
+  toast('Mã QR không phải link của app Gia phả', 4000);
+}
+async function scanAndHandle(person) { const t = await scanQR(); if (t) handleIncoming(t, person); }
+
+/** Người nhận mở link chia sẻ gia phả */
+async function receiveShare(code) {
+  busy('Đang kiểm tra link…');
+  let L;
+  try { L = await D.peekShareLink(code); } catch (e) { busy(); return toast(D.errMsg(e), 5000); }
+  busy();
+  if (D.myTrees().some((t) => t.id === L.tree)) { toast('Bạn đã xem được gia phả này'); return openTree(L.tree); }
+  const ok = await ask({ title: 'Nhận gia phả được chia sẻ', ok: 'Nhận',
+    msg: `<b>${esc(L.clanName)}</b> chia sẻ gia phả <b>${esc(L.treeName)}</b> cho bạn.<br>Quyền: <b>${esc(D.shareRoleName(L.role))}</b>${L.single ? ' · link dùng cho 1 người' : ''}<br><br><small>Chỉ tài khoản <b>${esc(D.myName())}</b> (${esc(D.clan.name)}) xem được.</small>` });
+  if (!ok) return;
+  busy('Đang nhận…');
+  try { await D.acceptShareLink(L); busy(); toast('Đã nhận – đang mở gia phả'); openTree(L.tree); }
+  catch (e) { busy(); toast(D.errMsg(e), 5000); }
+}
+
 // ======================= Nhiều hơn (giống ech-client: header xanh + lưới chức năng theo nhóm) =======================
 function renderMore(m) {
   const a = D.account, groups = {};
@@ -932,6 +1035,7 @@ function renderMore(m) {
       ${Object.entries(groups).map(([g, arr]) => `<div class="msec">${esc(g)}</div>${cards(arr)}`).join('')}
       <div class="msec">Tài khoản</div>
       <div class="mgrid">
+        <button data-act="scan"><i class="fa-solid fa-qrcode"></i><span>Quét mã QR</span></button>
         <button data-act="me"><i class="fa-solid fa-id-card"></i><span>Thông tin tài khoản</span></button>
         <button data-act="pw"><i class="fa-solid fa-key"></i><span>Đổi mật khẩu</span></button>
         <button data-act="theme"><i class="fa-solid fa-sliders"></i><span>Giao diện</span></button>
@@ -942,6 +1046,7 @@ function renderMore(m) {
     </div>`;
   m.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => go(el.dataset.go)));
   m.querySelector('[data-act=me]').onclick = editMe;
+  m.querySelector('[data-act=scan]').onclick = () => scanAndHandle();
   m.querySelector('[data-act=pw]').onclick = changePw;
   m.querySelector('[data-act=theme]').onclick = uiSettings;
   bindInstall(m);
@@ -1008,69 +1113,68 @@ function renderTrees(m) {
     <div class="tgrid">${own.map((t, i) => { const c = COLORS[i % COLORS.length]; return `<div class="tcard" data-t="${esc(t.id)}" style="--c1:${c[0]};--c2:${c[1]}">
       <div class="tn1">${esc(t.name)}</div><div class="tn2">${S.tree && S.tree.id === t.id ? 'Đang mở' : 'Bấm để mở'}</div><i class="fa-solid fa-sitemap tic"></i></div>`; }).join('')}
       ${!own.length ? `<button class="addtile" id="tNew"><span><i class="fa-solid fa-plus"></i>Tạo gia phả</span></button>` : ''}</div>
-    ${tree ? `<div class="sacts"><button class="abtn full" id="tSet"><i class="fa-solid fa-pen"></i>Sửa thông tin gia phả</button></div>` : ''}
-    ${tree ? `<div class="sec"><i class="fa-solid fa-share-nodes"></i> Chia sẻ cho dòng họ khác <span class="n"><button class="abtn sm blue" id="shAdd"><i class="fa-solid fa-plus"></i>Chia sẻ</button></span></div>
-      <div class="panel" id="shList"><div class="empty" style="padding:16px"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
-      <p class="note">Cho người ở dòng họ khác (vd con rể, con dâu xem gia phả họ mình) <b>xem gia phả bằng chính tài khoản của họ</b>. Người đó phải bấm Đồng ý mới xem được. Bấm <b>Rút</b> là mất quyền ngay.</p>` : ''}
+    ${tree ? `<div class="sacts"><button class="abtn full" id="tSet"><i class="fa-solid fa-pen"></i>Sửa thông tin gia phả</button></div>
+      <div class="sec"><i class="fa-solid fa-share-nodes"></i> Chia sẻ cho dòng họ khác <span class="n"><button class="abtn sm blue" id="shAdd"><i class="fa-solid fa-qrcode"></i>Tạo link / QR</button></span></div>
+      <div id="shList"><div class="empty" style="padding:16px"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
+      <p class="note">Cho người ở dòng họ khác (vd con rể, con dâu) <b>xem gia phả bằng chính tài khoản của họ</b>: tạo link / mã QR → gửi Zalo hoặc cho quét → người đó đăng nhập và bấm <b>Nhận</b>. Bấm <b>Rút</b> là mất quyền ngay.</p>` : ''}
     <p class="note">Mỗi dòng họ có <b>1 gia phả</b>. Họ ngoại, họ vợ… tự đăng ký dòng họ của họ rồi nối hồ sơ trùng người bằng <b>Gửi link liên kết</b> trong hồ sơ.</p></div>`;
   m.querySelectorAll('[data-t]').forEach((el) => (el.onclick = () => { openTree(el.dataset.t).then(() => go('tree')); }));
   if ($('tNew')) $('tNew').onclick = newTree;
   if ($('tSet')) $('tSet').onclick = async () => { if (!S.tree || S.tree.id !== tree.id) await openTree(tree.id); treeSettings(); };
   if (!tree) return;
+  const shareSheet = (L) => showShareSheet({ title: 'Chia sẻ gia phả', url: D.treeShareLink(L.code), expiresAt: L.expiresAt,
+    text: `Mời xem gia phả "${tree.name}" (${D.clan.name}) trên app Gia phả`,
+    note: `Quyền: <b>${esc(D.shareRoleName(L.role))}</b> · ${L.single ? 'dùng cho <b>1 người</b>' : '<b>nhiều người</b> dùng được'}` });
   $('shAdd').onclick = async () => {
-    const v = await ask({ title: 'Chia sẻ gia phả', msg: `Cho một tài khoản ở <b>dòng họ khác</b> xem gia phả <b>${esc(tree.name)}</b>. Nhập mã dòng họ và tên đăng nhập của người đó.`,
-      fields: [{ id: 'c', ph: 'Mã dòng họ của người đó (vd tran-hn)' }, { id: 'u', ph: 'Tên đăng nhập của người đó' },
-        { id: 'r', type: 'select', value: 'viewer', ph: 'Quyền', options: [['viewer', 'Chỉ xem'], ['member', 'Xem + gửi đề xuất sửa']] }],
-      ok: 'Gửi lời mời', validate: (v) => (!v.c || !v.u ? 'Nhập đủ mã dòng họ và tên đăng nhập' : '') });
+    const v = await ask({ title: 'Tạo link chia sẻ gia phả', msg: `Người nhận đăng nhập bằng tài khoản dòng họ của họ và bấm Nhận là xem được gia phả <b>${esc(tree.name)}</b>.`,
+      fields: [{ id: 'r', type: 'select', value: 'viewer', ph: 'Quyền', options: [['viewer', 'Chỉ xem'], ['member', 'Xem + gửi đề xuất sửa']] },
+        { id: 's', type: 'select', value: '1', ph: 'Số người', options: [['1', 'Dùng cho 1 người'], ['n', 'Nhiều người dùng được']] },
+        { id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
     if (!v) return;
-    busy('Đang chia sẻ…');
-    try { await D.shareTree(tree, v.c, v.u, v.r); busy(); toast('Đã gửi lời mời. Người đó đăng nhập và bấm Đồng ý là xem được.', 4500); drawShares(); }
+    busy('Đang tạo link…');
+    try { const code = await D.createShareLink(tree, v.r, v.s === '1', Number(v.d)); const L = await D.peekShareLink(code); busy(); drawShares(); shareSheet(L); }
     catch (e) { busy(); toast(D.errMsg(e), 5000); }
   };
-  const ST = { pending: ['warn', 'Chờ đồng ý'], accepted: ['ok', 'Đang xem'], declined: ['bad', 'Đã từ chối'] };
   const drawShares = async () => {
-    let list = [];
-    try { list = await D.listShares(tree.id); } catch (e) { $('shList').innerHTML = `<div class="empty" style="padding:16px">${esc(D.errMsg(e))}</div>`; return; }
+    let links = [], people = [];
+    try { [links, people] = await Promise.all([D.listShareLinks(tree.id), D.listShares(tree.id)]); }
+    catch (e) { $('shList').innerHTML = `<div class="empty" style="padding:16px">${esc(D.errMsg(e))}</div>`; return; }
     if (!$('shList')) return;
-    $('shList').innerHTML = list.length ? list.map((x) => `<div class="item" style="cursor:default"><div class="ic info"><i class="fa-solid fa-user-group"></i></div>
-      <div class="t"><b>${esc(x.name || x.target)}</b><span>${esc(x.target)} · ${esc(D.shareRoleName(x.role))}</span></div>
-      <span class="when ${ST[x.status][0]}">${ST[x.status][1]}</span>
-      <button class="abtn sm red" data-rv="${esc(x.id)}">${x.status === 'accepted' ? 'Rút' : 'Xóa'}</button></div>`).join('')
-      : '<div class="empty" style="padding:16px">Chưa chia sẻ cho ai</div>';
+    const now = Date.now(), live = links.filter((x) => x.expiresAt.toMillis() > now && !(x.single && x.usedBy));
+    $('shList').innerHTML = `<div class="panel">${people.length ? people.map((x) => `<div class="item" style="cursor:default"><div class="ic ok"><i class="fa-solid fa-eye"></i></div>
+        <div class="t"><b>${esc(x.name || x.username)}</b><span>${esc(x.fromClanName || '')} · @${esc(x.username || '')} · ${esc(D.shareRoleName(x.role))} · từ ${esc(fmtTime(x.at))}</span></div>
+        <button class="abtn sm red" data-rv="${esc(x.id)}">Rút</button></div>`).join('') : '<div class="empty" style="padding:14px">Chưa ai xem nhờ chia sẻ</div>'}</div>
+      ${live.length ? `<div class="msec">Link đang hiệu lực</div><div class="panel">${live.map((x) => `<div class="item" style="cursor:default"><div class="ic info"><i class="fa-solid fa-qrcode"></i></div>
+        <div class="t"><b>${esc(D.shareRoleName(x.role))} · ${x.single ? '1 người' : 'nhiều người'}</b><span>Hết hạn ${esc(fmtTime(x.expiresAt))}</span></div>
+        <button class="abtn sm" data-qr="${esc(x.code)}"><i class="fa-solid fa-qrcode"></i></button><button class="abtn sm red" data-cx="${esc(x.code)}">Hủy</button></div>`).join('')}</div>` : ''}`;
+    $('shList').querySelectorAll('[data-qr]').forEach((b) => (b.onclick = () => shareSheet(live.find((x) => x.code === b.dataset.qr))));
+    $('shList').querySelectorAll('[data-cx]').forEach((b) => (b.onclick = async () => {
+      if (!(await ask({ title: 'Hủy link?', msg: 'Link và mã QR này sẽ không dùng được nữa. Người đã nhận vẫn xem được (bấm Rút để thu hồi).', ok: 'Hủy link', danger: true }))) return;
+      try { await D.cancelShareLink(b.dataset.cx); toast('Đã hủy link'); drawShares(); } catch (e) { toast(D.errMsg(e), 4000); }
+    }));
     $('shList').querySelectorAll('[data-rv]').forEach((b) => (b.onclick = async () => {
-      const x = list.find((y) => y.id === b.dataset.rv);
-      if (!(await ask({ title: x.status === 'accepted' ? 'Rút chia sẻ?' : 'Xóa lời mời?', msg: `<b>${esc(x.name || x.target)}</b> sẽ không xem được gia phả <b>${esc(tree.name)}</b> nữa.`, ok: x.status === 'accepted' ? 'Rút' : 'Xóa', danger: true }))) return;
+      const x = people.find((y) => y.id === b.dataset.rv);
+      if (!(await ask({ title: 'Rút chia sẻ?', msg: `<b>${esc(x.name || x.username)}</b> (${esc(x.fromClanName || '')}) sẽ không xem được gia phả <b>${esc(tree.name)}</b> nữa.`, ok: 'Rút', danger: true }))) return;
       try { await D.revokeShare(x); toast('Đã rút chia sẻ'); drawShares(); } catch (e) { toast(D.errMsg(e), 4000); }
     }));
   };
   drawShares();
 }
 
-/** Lời mời xem gia phả đang chờ + gia phả đang xem nhờ chia sẻ (hiện ở Tổng quan) */
+/** Gia phả đang xem nhờ chia sẻ (hiện ở Tổng quan) */
 function shareBanners() {
-  const pend = D.pendingShares.map((x) => `<div class="item" style="cursor:default"><div class="ic warn"><i class="fa-solid fa-envelope-open-text"></i></div>
-    <div class="t"><b>${esc(x.clanName)} mời bạn xem gia phả</b><span>${esc(x.treeName)} · ${esc(D.shareRoleName(x.role))} · do ${esc(x.byName || 'quản trị')} gửi</span>
-    <div style="display:flex;gap:8px;margin-top:8px"><button class="abtn sm blue" data-sacc="${esc(x.id)}"><i class="fa-solid fa-check"></i>Đồng ý</button><button class="abtn sm" data-sdec="${esc(x.id)}">Từ chối</button></div></div></div>`).join('');
   const cur = S.tree && D.myTrees().find((t) => t.id === S.tree.id && t.shared);
-  const curHtml = cur ? `<div class="item" style="cursor:default"><div class="ic info"><i class="fa-solid fa-share-nodes"></i></div>
+  return cur ? `<div class="panel" style="margin-top:14px"><div class="item" style="cursor:default"><div class="ic info"><i class="fa-solid fa-share-nodes"></i></div>
     <div class="t"><b>Đang xem gia phả được chia sẻ</b><span>${esc(cur.clanName)} · ${esc(D.shareRoleName(cur.role))}</span></div>
-    <button class="abtn sm red" id="shLeave">Bỏ theo dõi</button></div>` : '';
-  return pend || curHtml ? `<div class="panel" style="margin-top:14px">${pend}${curHtml}</div>` : '';
+    <button class="abtn sm red" id="shLeave">Bỏ theo dõi</button></div></div>` : '';
 }
-function bindShareBanners(m) {
-  m.querySelectorAll('[data-sacc],[data-sdec]').forEach((b) => (b.onclick = async () => {
-    const id = b.dataset.sacc || b.dataset.sdec, x = D.pendingShares.find((y) => y.id === id), yes = !!b.dataset.sacc;
-    busy(yes ? 'Đang nhận…' : 'Đang từ chối…');
-    try { await D.answerShare(x, yes); busy(); toast(yes ? `Đã nhận. Chọn gia phả "${x.treeName}" ở thanh trên để xem.` : 'Đã từ chối', 4500); shell(); }
-    catch (e) { busy(); toast(D.errMsg(e), 4000); }
-  }));
+function bindShareBanners() {
   if ($('shLeave')) $('shLeave').onclick = async () => {
     if (!(await ask({ title: 'Bỏ theo dõi gia phả này?', msg: 'Bạn sẽ không xem được gia phả này nữa, trừ khi được chia sẻ lại.', ok: 'Bỏ theo dõi', danger: true }))) return;
     try { await D.leaveShare(S.tree.id); toast('Đã bỏ theo dõi'); store('lastTree', null); const t = D.myTrees()[0]; if (t) openTree(t.id); else { S.tree = null; shell(); } }
     catch (e) { toast(D.errMsg(e), 4000); }
   };
 }
-
 
 // ======================= Quản lý người dùng (root) =======================
 const TROLE = { '': 'Không truy cập', member: 'Thành viên – chỉ xem', editor: 'Biên tập – được sửa' };
