@@ -3,6 +3,7 @@
 <head>
 <script>/* áp giao diện đã chọn ngay khi tải để không nháy màu; mặc định: sáng */
 try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('theme')) === 'dark' ? 'dark' : 'light'; } catch (e) { document.documentElement.dataset.theme = 'light'; }
+try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz <= 16) document.documentElement.style.setProperty('--font-size', fz + 'px'); } catch (e) {}
 </script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -54,15 +55,15 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .hero h1 span { background: linear-gradient(90deg, var(--accent), var(--accent2), #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .hero p { margin: 0; color: var(--muted); font-size: var(--fs-md); }
   .acts { display: flex; gap: 8px; }
-  .ibtn { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); text-decoration: none; flex: 0 0 auto;
+  .ibtn { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); text-decoration: none; flex: 0 0 auto;
           background: var(--card); color: var(--text); cursor: pointer; font-size: 16px; backdrop-filter: blur(10px); transition: .15s; }
   .ibtn:hover { color: var(--accent); border-color: var(--ring); }
   .sec { display: flex; align-items: center; gap: 8px; margin: 28px 2px 12px; font-size: var(--fs-base); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   .sec .n { margin-left: auto; font-weight: 600; text-transform: none; letter-spacing: 0; }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); backdrop-filter: blur(12px); overflow: hidden; }
-  .item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--line); cursor: pointer; }
   .item:first-child { border-top: 0; }
-  .item .ic { flex: 0 0 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 16px; overflow: hidden; }
+  .item .ic { flex: 0 0 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: var(--fs-md); overflow: hidden; }
   .item .ic img { width: 100%; height: 100%; object-fit: cover; }
   .ic.bad { background: var(--bad-bg); color: var(--bad); } .ic.warn { background: var(--warn-bg); color: var(--warn); }
   .ic.ok { background: var(--ok-bg); color: var(--ok); } .ic.info { background: var(--ring); color: var(--accent); }
@@ -82,12 +83,12 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .filters::-webkit-scrollbar { display: none; }
   .search { position: relative; flex: 1; min-width: 160px; }
   .search > i { position: absolute; z-index: 1; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; }
-  .search input { width: 100%; font: inherit; font-size: var(--fs-md); padding: 8px 38px 8px 34px; border-radius: 99px; border: 1px solid var(--line);
+  .search input { width: 100%; font: inherit; font-size: var(--fs-base); padding: 8px 38px 8px 34px; border-radius: 99px; border: 1px solid var(--line);
                   background: var(--card-solid); color: var(--text); outline: none; }
   .search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
   .search .clr { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; border: 0;
                  background: var(--line); color: var(--muted); cursor: pointer; display: grid; place-items: center; font-size: var(--fs-sm); }
-  .listbar { position: sticky; top: 56px; z-index: 6; margin: 0 -16px; padding: 10px 16px 6px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
+  .listbar { position: sticky; top: 52px; z-index: 6; margin: 0 -16px; padding: 10px 16px 6px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
 
   /* ===== Popup, hộp thoại, thông báo ===== */
   .sheet-bg { position: fixed; inset: 0; background: rgba(8,10,20,.62); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); z-index: 50; display: none; }
@@ -109,7 +110,7 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   }
   .grab { width: 40px; height: 5px; border-radius: 99px; background: var(--line); margin: 0 auto 14px; }
   .rows { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 12px; }
-  .r { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); font-size: var(--fs-md); }
+  .r { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); font-size: var(--fs-base); }
   .r:first-child { border-top: 0; }
   .r > i { width: 18px; text-align: center; color: var(--muted); }
   .r > span { color: var(--muted); flex: 0 0 auto; }
@@ -117,11 +118,11 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .r b small { display: block; font-weight: 500; color: var(--muted); font-size: var(--fs-sm); }
   .sacts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
   .sacts .full { grid-column: 1 / -1; }
-  .abtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; border-radius: 14px; font: inherit; font-weight: 700; padding: 0 14px;
+  .abtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border-radius: 12px; font: inherit; font-weight: 700; padding: 0 14px;
           text-decoration: none; cursor: pointer; border: 1px solid var(--line); background: var(--card-solid); color: var(--text); }
   .abtn.blue { border: 0; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
   .abtn.red { color: var(--bad); }
-  .abtn.sm { height: 36px; font-size: var(--fs-base); padding: 0 12px; border-radius: 11px; }
+  .abtn.sm { height: 32px; font-size: var(--fs-base); padding: 0 12px; border-radius: 11px; }
   .abtn:disabled { opacity: .5; }
   .busy { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(0,0,0,.35); }
   .busy > div { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-radius: 16px; background: var(--card-solid); font-weight: 600; box-shadow: var(--shadow-hover); }
@@ -159,7 +160,7 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .selbtn { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; text-align: left; font: inherit; color: var(--text); }
   .selbtn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .selbtn i { font-size: var(--fs-xs); color: var(--muted); }
-  .fld .selbtn { width: 100%; font-size: var(--fs-base); padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); }
+  .fld .selbtn { width: 100%; font-size: var(--fs-base); padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); }
   .selbtn:disabled { opacity: .6; cursor: default; }
 
   /* ===== Form ===== */
@@ -167,7 +168,7 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
   .fgrid .full { grid-column: 1 / -1; }
   .fld label { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); margin-bottom: 4px; }
-  .fld input, .fld select, .fld textarea { width: 100%; font: inherit; font-size: var(--fs-lg); padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+  .fld input, .fld select, .fld textarea { width: 100%; font: inherit; font-size: var(--fs-base); padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line);
                             background: var(--bg); color: var(--text); outline: none; }
   .fld textarea { min-height: 76px; resize: vertical; }
   .fld input:focus, .fld select:focus, .fld textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
@@ -195,18 +196,19 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .gbox.wide { max-width: 520px; }
   .lock { width: 64px; height: 64px; margin: 0 auto; border-radius: 20px; display: grid; place-items: center; color: #fff; font-size: 26px;
           background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 14px 30px -12px var(--accent); }
-  .gt { margin: 16px 0 4px; font-size: 22px; font-weight: 800; }
+  .gt { margin: 14px 0 4px; font-size: calc(var(--font-size) + 7px); font-weight: 800; }
   .gs { margin: 0 0 18px; color: var(--muted); font-size: var(--fs-md); }
+  .gbox .mav.big { width: 76px; height: 76px; margin: 0 auto; font-size: 32px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 14px 30px -12px var(--accent); }
   .gfld { position: relative; margin-bottom: 10px; }
   .gfld > i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
-  .gfld input { width: 100%; font: inherit; font-size: var(--fs-lg); padding: 12px 44px 12px 40px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg);
+  .gfld input { width: 100%; font: inherit; font-size: var(--fs-base); padding: 11px 44px 11px 38px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg);
                 color: var(--text); outline: none; }
   .gfld input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--ring); }
   .eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
   .grow { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 12px; }
   .grow .ck { font-size: var(--fs-base); color: var(--muted); }
   .linkbtn { border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-base); font-weight: 600; cursor: pointer; padding: 4px 0; }
-  .go { width: 100%; height: 50px; border: 0; border-radius: 14px; cursor: pointer; font: inherit; font-size: var(--fs-xl); font-weight: 700; color: #fff;
+  .go { width: 100%; height: 44px; border: 0; border-radius: 12px; cursor: pointer; font: inherit; font-size: var(--fs-md); font-weight: 700; color: #fff;
         background: var(--accent); display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
   .go:disabled { opacity: .6; }
   .fld label small { font-weight: 500; }
@@ -231,12 +233,12 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
 
   /* ===== Khung: header xanh + menu (điện thoại: tab dưới; máy tính: cột trái) ===== */
   #app { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
-  .top { position: sticky; top: 0; z-index: 8; display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 16px; height: 56px;
+  .top { position: sticky; top: 0; z-index: 8; display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 16px; height: 52px;
          background: var(--hdr); color: #fff; }
-  .top .ibtn { width: 40px; height: 40px; font-size: var(--fs-lg); background: rgba(255,255,255,.14); border: 0; color: #fff; }
+  .top .ibtn { width: 36px; height: 36px; font-size: var(--fs-lg); background: rgba(255,255,255,.14); border: 0; color: #fff; }
   .tsw { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, auto) auto; justify-content: start; column-gap: 8px; align-items: center;
          border: 0; background: none; color: #fff; text-align: left; cursor: pointer; font: inherit; padding: 0; }
-  .tsw b { font-size: var(--fs-xl); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tsw b { font-size: var(--fs-lg); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tsw small { grid-column: 1; font-size: var(--fs-sm); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tsw i { grid-row: 1; grid-column: 2; font-size: 12px; opacity: .9; }
   .tsw:disabled { cursor: default; }
@@ -244,7 +246,7 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
              padding: 4px 6px env(safe-area-inset-bottom); background: var(--card-solid); border-top: 1px solid var(--line); box-shadow: 0 -6px 18px -14px rgba(0,0,0,.4); }
   .ntab { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none;
           color: var(--tabgrey); cursor: pointer; font: inherit; font-size: var(--fs-xs); font-weight: 600; border-radius: 14px; padding: 4px 2px; }
-  .ntab i { font-size: 18px; }
+  .ntab i { font-size: 17px; }
   .ntab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .ntab.on { color: var(--accent); }
   .ntab.on i { background: var(--ring); padding: 4px 16px; border-radius: 99px; }
@@ -274,12 +276,18 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
   .mout { width: 42px; height: 42px; border-radius: 12px; border: 0; background: rgba(255,255,255,.16); color: #fff; font-size: var(--fs-xl); cursor: pointer; }
   .moresheet { position: relative; margin: -26px auto 0; border-radius: 24px 24px 0 0; background: var(--bg); padding: 6px 16px 24px; max-width: 1000px; }
   .msec { margin: 18px 2px 10px; font-size: var(--fs-base); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .cfgrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; }
+  .cfgrow > div > b { display: block; font-size: var(--fs-md); } .cfgrow > div > small { color: var(--muted); font-size: var(--fs-sm); }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; font-size: 14px; }
+  .stepper span { min-width: 48px; text-align: center; font-weight: 700; color: var(--accent); }
+  .preview { padding: 12px 14px; border-top: 1px solid var(--line); color: var(--muted); }
   .rsel { font: inherit; font-size: var(--fs-base); padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); max-width: 60%; }
   @media (max-width: 420px) { .hide-s { display: none; } }
   @media (max-width: 340px) { .qgrid, .mgrid { grid-template-columns: repeat(3, 1fr); } }
   /* cây */
-  .tbox { position: relative; height: calc(100vh - 120px); height: calc(100dvh - 120px - env(safe-area-inset-bottom)); overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
-  @media (min-width: 900px) { .tbox { height: calc(100vh - 56px); height: calc(100dvh - 56px); } }
+  .tbox { position: relative; height: calc(100vh - 116px); height: calc(100dvh - 116px - env(safe-area-inset-bottom)); overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+  @media (min-width: 900px) { .tbox { height: calc(100vh - 52px); height: calc(100dvh - 52px); } }
   .tbox:active { cursor: grabbing; }
   .tbox svg { position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: visible; }
   .tools { position: absolute; right: 12px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 3; }
@@ -341,6 +349,6 @@ try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792047670108"></script>
+<script type="module" src="js/app.js?v=1792048047941"></script>
 </body>
 </html>

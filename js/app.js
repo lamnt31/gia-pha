@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792047670108';
-import * as D from './data.js?v=1792047670108';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792047670108';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792047670108';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792048047941';
+import * as D from './data.js?v=1792048047941';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792048047941';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792048047941';
 
-const APP_VER = '15/10 14:01';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 14:07';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -110,9 +110,10 @@ D.onUser(async (u, err) => {
     return;
   }
   $('gate').hidden = true; $('app').hidden = false;
+  rememberAcc({ code: D.clan.code, user: D.account.username, name: D.account.name || '', clan: D.clan.name || '' });
   const trees = D.myTrees(), last = store('lastTree');
-  const pick = trees.find((t) => t.id === last) || trees[0];
-  if (pick) openTree(pick.id, true); else { S.tree = null; S.tab = 'home'; shell(); }
+  const first = trees.find((t) => t.id === last) || trees[0];
+  if (first) openTree(first.id, true); else { S.tree = null; S.tab = 'home'; shell(); }
 });
 
 // ======================= Cài ứng dụng (PWA) – giống app Thẻ =======================
@@ -144,16 +145,33 @@ async function doInstall() {
 }
 
 // ======================= Đăng nhập (giống ech-client: mã dòng họ + tên đăng nhập + mật khẩu) =======================
-function renderLogin(err = '') {
-  const rem = store('remember') || {};
+// Tài khoản đã đăng nhập trên máy này (như app ngân hàng): lần sau chỉ cần nhập mật khẩu. Tối đa 5.
+const accKey = (a) => `${a.code}_${a.user}`;
+const savedAccs = () => { const l = store('accounts') || []; const r = store('remember'); if (!l.length && r && r.code) l.push({ code: r.code, user: r.user, name: '', clan: '' }); return l; };
+function rememberAcc(a) {
+  const l = savedAccs().filter((x) => accKey(x) !== accKey(a));
+  l.unshift({ ...a, at: Date.now() });
+  store('accounts', l.slice(0, 5)); store('remember', null);
+}
+function forgetAcc(a) { store('accounts', savedAccs().filter((x) => accKey(x) !== accKey(a))); }
+const greet = () => { const h = new Date().getHours(); return h < 11 ? 'Chào buổi sáng' : h < 14 ? 'Chào buổi trưa' : h < 18 ? 'Chào buổi chiều' : 'Chào buổi tối'; };
+
+/** Màn đăng nhập. Có tài khoản đã lưu → chỉ hỏi mật khẩu; other = true → nhập đủ mã dòng họ + tên đăng nhập */
+function renderLogin(err = '', other = false) {
+  const accs = savedAccs(), acc = !other && accs[0];
   $('gate').innerHTML = `<form class="gbox" id="lf" autocomplete="on">
-    <div class="lock"><i class="fa-solid fa-sitemap"></i></div>
-    <div class="gt">Gia phả</div>
-    <p class="gs">Đăng nhập để xem gia phả dòng họ</p>
-    <div class="gfld"><i class="fa-solid fa-landmark"></i><input id="lCode" placeholder="Mã dòng họ" autocomplete="organization" autocapitalize="none" value="${esc(rem.code || '')}" required></div>
-    <div class="gfld"><i class="fa-solid fa-user"></i><input id="lUser" placeholder="Tên đăng nhập" autocomplete="username" autocapitalize="none" value="${esc(rem.user || '')}" required></div>
+    ${acc ? `<div class="mav big">${esc(initials(acc.name || acc.user))}</div>
+      <p class="gs" style="margin:14px 0 2px">${greet()},</p>
+      <div class="gt" style="margin:0 0 4px">${esc(acc.name || acc.user)}</div>
+      <p class="gs"><i class="fa-solid fa-landmark"></i> ${esc(acc.clan || acc.code)} · @${esc(acc.user)}</p>
+      <input type="text" autocomplete="username" value="${esc(acc.code + '/' + acc.user)}" hidden>`
+    : `<div class="lock"><i class="fa-solid fa-sitemap"></i></div>
+      <div class="gt">Gia phả</div>
+      <p class="gs">Đăng nhập để xem gia phả dòng họ</p>
+      <div class="gfld"><i class="fa-solid fa-landmark"></i><input id="lCode" placeholder="Mã dòng họ" autocomplete="organization" autocapitalize="none" required></div>
+      <div class="gfld"><i class="fa-solid fa-user"></i><input id="lUser" placeholder="Tên đăng nhập" autocomplete="username" autocapitalize="none" required></div>`}
     <div class="gfld"><i class="fa-solid fa-lock"></i><input id="lPw" type="password" placeholder="Mật khẩu" autocomplete="current-password" required><button type="button" class="eye" id="lEye" aria-label="Hiện mật khẩu"><i class="fa-regular fa-eye"></i></button></div>
-    <div class="grow"><label class="ck"><input type="checkbox" id="lRem" ${rem.code ? 'checked' : ''}>Ghi nhớ</label><button type="button" class="linkbtn" id="lForgot">Quên mật khẩu?</button></div>
+    <div class="grow">${acc || accs.length ? `<button type="button" class="linkbtn" id="lSwitch"><i class="fa-solid fa-right-left"></i> ${acc ? 'Chuyển tài khoản' : 'Tài khoản đã lưu'}</button>` : '<span></span>'}<button type="button" class="linkbtn" id="lForgot">Quên mật khẩu?</button></div>
     <button class="go" id="lGo"><span>Đăng nhập</span><i class="fa-solid fa-arrow-right"></i></button>
     <div class="err" id="gErr">${esc(err)}</div>
     <p class="note">Chưa có tài khoản? <button type="button" class="linkbtn" id="lReg">Đăng ký dòng họ mới</button></p>
@@ -162,11 +180,26 @@ function renderLogin(err = '') {
     <button type="button" class="instbtn" data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i>Cài ứng dụng lên máy</button>
   </form>`;
   bindInstall($('gate'));
+  if (acc) setTimeout(() => $('lPw') && $('lPw').focus(), 100);
+  const codeUser = () => (acc ? [acc.code, acc.user] : [$('lCode').value.trim().toLowerCase(), $('lUser').value.trim().toLowerCase()]);
   $('lEye').onclick = () => { const i = $('lPw'); i.type = i.type === 'password' ? 'text' : 'password'; $('lEye').innerHTML = `<i class="fa-regular fa-eye${i.type === 'text' ? '-slash' : ''}"></i>`; };
   $('lReg').onclick = renderRegister;
+  if ($('lSwitch')) $('lSwitch').onclick = async () => {
+    const opts = accs.map((a) => [accKey(a), `${a.name || a.user} · ${a.clan || a.code} (@${a.user})`]);
+    opts.push(['__other', '+ Đăng nhập tài khoản khác']);
+    if (acc) opts.push(['__forget', `Xóa "${acc.name || acc.user}" khỏi máy này`]);
+    const v = await pick({ title: 'Chọn tài khoản', options: opts, value: acc ? accKey(acc) : '' });
+    if (!v) return;
+    if (v === '__other') return renderLogin('', true);
+    if (v === '__forget') { forgetAcc(acc); toast('Đã xóa tài khoản khỏi máy này'); return renderLogin(); }
+    const a = accs.find((x) => accKey(x) === v);
+    store('accounts', [a, ...accs.filter((x) => x !== a)]);
+    renderLogin();
+  };
   $('lForgot').onclick = async () => {
+    const [c0, u0] = codeUser();
     const v = await ask({ title: 'Quên mật khẩu', msg: 'Nếu tài khoản có email, link đặt lại mật khẩu sẽ được gửi về email đó.',
-      fields: [{ id: 'c', ph: 'Mã dòng họ', value: $('lCode').value }, { id: 'u', ph: 'Tên đăng nhập', value: $('lUser').value }], ok: 'Gửi',
+      fields: [{ id: 'c', ph: 'Mã dòng họ', value: c0 }, { id: 'u', ph: 'Tên đăng nhập', value: u0 }], ok: 'Gửi',
       validate: (v) => (!v.c || !v.u ? 'Nhập đủ mã dòng họ và tên đăng nhập' : '') });
     if (!v) return;
     busy('Đang gửi…');
@@ -175,8 +208,7 @@ function renderLogin(err = '') {
   };
   $('lf').onsubmit = async (e) => {
     e.preventDefault(); $('gErr').textContent = '';
-    const code = $('lCode').value.trim().toLowerCase(), user = $('lUser').value.trim().toLowerCase();
-    store('remember', $('lRem').checked ? { code, user } : null);
+    const [code, user] = codeUser();
     $('lGo').disabled = true; busy('Đang đăng nhập…');
     try { await D.login(code, user, $('lPw').value); }
     catch (er) { $('gErr').textContent = D.errMsg(er); }
@@ -212,7 +244,7 @@ function renderRegister() {
     e.preventDefault(); $('gErr').textContent = '';
     const f = { clanName: $('rName').value, code: $('rCode').value, name: $('rPerson').value, phone: $('rPhone').value, email: $('rEmail').value, username: $('rUser').value, password: $('rPw').value };
     $('rGo').disabled = true; busy('Đang tạo dòng họ…');
-    try { await D.register(f); store('remember', { code: f.code.trim().toLowerCase(), user: f.username.trim().toLowerCase() }); toast('Đăng ký thành công'); }
+    try { await D.register(f); toast('Đăng ký thành công'); }
     catch (er) { $('gErr').textContent = D.errMsg(er); }
     finally { busy(); if ($('rGo')) $('rGo').disabled = false; }
   };
@@ -801,7 +833,7 @@ function renderMore(m) {
       <div class="mgrid">
         <button data-act="me"><i class="fa-solid fa-id-card"></i><span>Thông tin tài khoản</span></button>
         <button data-act="pw"><i class="fa-solid fa-key"></i><span>Đổi mật khẩu</span></button>
-        <button data-act="theme"><i class="fa-solid fa-circle-half-stroke"></i><span>Sáng / tối</span></button>
+        <button data-act="theme"><i class="fa-solid fa-sliders"></i><span>Giao diện</span></button>
         <button data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i><span>Cài ứng dụng</span></button>
         ${D.isRoot() ? '<button data-act="clan"><i class="fa-solid fa-landmark"></i><span>Thông tin dòng họ</span></button>' : ''}
       </div>
@@ -810,10 +842,38 @@ function renderMore(m) {
   m.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => go(el.dataset.go)));
   m.querySelector('[data-act=me]').onclick = editMe;
   m.querySelector('[data-act=pw]').onclick = changePw;
-  m.querySelector('[data-act=theme]').onclick = toggleTheme;
+  m.querySelector('[data-act=theme]').onclick = uiSettings;
   bindInstall(m);
   if (m.querySelector('[data-act=clan]')) m.querySelector('[data-act=clan]').onclick = editClan;
   $('mOut').onclick = async () => { if (await ask({ title: 'Đăng xuất?', ok: 'Đăng xuất' })) D.logout(); };
+}
+
+// ======================= Giao diện: cỡ chữ (như ech-client, 11–16px) + sáng/tối =======================
+const FONT_MIN = 11, FONT_MAX = 16, FONT_DEF = 13;
+const fontSize = () => { const v = +store('fontSize'); return v >= FONT_MIN && v <= FONT_MAX ? v : FONT_DEF; };
+function setFont(n) {
+  n = Math.min(FONT_MAX, Math.max(FONT_MIN, n));
+  document.documentElement.style.setProperty('--font-size', n + 'px');
+  store('fontSize', n === FONT_DEF ? null : n);
+  return n;
+}
+function uiSettings() {
+  const dark = () => document.documentElement.dataset.theme === 'dark';
+  openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Giao diện</h2>
+    <div class="rows">
+      <div class="cfgrow"><div><b>Cỡ chữ</b><small>Mặc định ${FONT_DEF}px</small></div>
+        <div class="stepper"><button type="button" id="fzMinus" aria-label="Nhỏ hơn"><i class="fa-solid fa-minus"></i></button><span id="fzVal">${fontSize()}px</span><button type="button" id="fzPlus" aria-label="Lớn hơn"><i class="fa-solid fa-plus"></i></button></div></div>
+      <div class="preview">Xem trước: <b style="color:var(--text)">Nguyễn Văn Tổ</b> · Đời 1 · giỗ 16/2 âm lịch</div>
+      <div class="cfgrow"><div><b>Chế độ màu</b><small>Sáng hoặc tối</small></div>
+        <div class="seg" style="min-width:150px"><label><input type="radio" name="thm" value="light" ${dark() ? '' : 'checked'}>Sáng</label><label><input type="radio" name="thm" value="dark" ${dark() ? 'checked' : ''}>Tối</label></div></div>
+    </div>
+    <div class="sacts"><button type="button" class="abtn full" id="uiReset"><i class="fa-solid fa-rotate-left"></i>Về mặc định</button></div>`);
+  const show = (n) => { $('fzVal').textContent = n + 'px'; $('fzMinus').disabled = n <= FONT_MIN; $('fzPlus').disabled = n >= FONT_MAX; };
+  show(fontSize());
+  $('fzMinus').onclick = () => show(setFont(fontSize() - 1));
+  $('fzPlus').onclick = () => show(setFont(fontSize() + 1));
+  $('sheet').querySelectorAll('input[name=thm]').forEach((r) => (r.onchange = () => applyTheme(r.value)));
+  $('uiReset').onclick = () => { show(setFont(FONT_DEF)); applyTheme('light'); $('sheet').querySelector('input[name=thm][value=light]').checked = true; };
 }
 
 async function editMe() {
