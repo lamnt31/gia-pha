@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792049509823';
-import * as D from './data.js?v=1792049509823';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792049509823';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792049509823';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792053529764';
+import * as D from './data.js?v=1792053529764';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792053529764';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792053529764';
 
-const APP_VER = '15/10 14:31';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 15:38';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -99,6 +99,7 @@ const avatar = (p, cls = 'ic') => `<div class="${cls} ${p.gender === 'f' ? 'f' :
 const pname = (p) => (p && p.name) || 'Chưa rõ tên';
 
 // ======================= Khởi động =======================
+{ const u = new URL(location.href), c = u.searchParams.get('link'); if (c) { store('pendingLink', c); u.searchParams.delete('link'); history.replaceState(null, '', u); } }
 applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
 initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
@@ -111,7 +112,8 @@ D.onUser(async (u, err) => {
   }
   $('gate').hidden = true; $('app').hidden = false;
   rememberAcc({ code: D.clan.code, user: D.account.username, name: D.account.name || '', clan: D.clan.name || '' });
-  const trees = D.myTrees(), last = store('lastTree');
+  const trees = D.myTrees(), last = store('lastTree'), oal = store('openAfterLogin');
+  if (oal && oal.clan === D.clan.code) { store('openAfterLogin', null); if (trees.some((t) => t.id === oal.tree)) { S.jumpAfterLoad = oal.person; return openTree(oal.tree, true); } }
   const first = trees.find((t) => t.id === last) || trees[0];
   if (first) openTree(first.id, true); else { S.tree = null; S.tab = 'home'; shell(); }
 });
@@ -269,8 +271,8 @@ function shell() {
   const tab = (x, cls) => `<button class="${cls} ${S.tab === x.k ? 'on' : ''}" data-tab="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span>${x.k === 'props' ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}</button>`;
   $('app').innerHTML = `
     <div class="top">
-      <button class="tsw" id="treeSw" ${tr.length > 1 || D.isRoot() ? '' : 'disabled'}><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
-        <small id="tsub">${esc(S.tree ? `${ROLE[S.role]} · ${S.persons.length} người` : D.clan.name || '')}</small>${tr.length > 1 || D.isRoot() ? '<i class="fa-solid fa-chevron-down"></i>' : ''}</button>
+      <button class="tsw" id="treeSw" ${tr.length > 1 ? '' : 'disabled'}><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
+        <small id="tsub">${esc(S.tree ? `${ROLE[S.role]} · ${S.persons.length} người` : D.clan.name || '')}</small>${tr.length > 1 ? '<i class="fa-solid fa-chevron-down"></i>' : ''}</button>
       <button class="ibtn" id="themeBtn"></button>
     </div>
     <nav class="nav mob">${mobile.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn' }, 'ntab')}</nav>
@@ -304,7 +306,7 @@ async function switchTree() {
 }
 
 async function newTree() {
-  const v = await ask({ title: 'Tạo gia phả mới', msg: `Mỗi dòng họ tạo tối đa ${D.LIMIT_TREES} gia phả (vd: họ nội, họ ngoại, một chi lớn).`,
+  const v = await ask({ title: 'Tạo gia phả mới', msg: `Mỗi dòng họ có 1 gia phả. Họ ngoại, họ vợ… tự đăng ký dòng họ riêng rồi liên kết hồ sơ.`,
     fields: [{ id: 'name', ph: 'Tên gia phả' }, { id: 'origin', ph: 'Quê gốc (không bắt buộc)' }], ok: 'Tạo',
     validate: (v) => (!v.name ? 'Chưa nhập tên' : v.name.length > 120 ? 'Tên quá dài' : '') });
   if (!v) return;
@@ -321,7 +323,7 @@ async function openTree(id, first) {
   busy();
   store('lastTree', id);
   S.persons = []; S.A = null; S.sel = null; S.q = ''; S.pz = null; S.firstFit = true; S.propCount = 0;
-  S.collapsed = new Set(store('col_' + id) || []);
+  S.collapsed = new Set(store('col_' + id) || []); S.links = new Map();
   if (first) S.tab = store('tab') || 'home';
   document.title = S.tree.name + ' – Gia phả';
   shell();
@@ -330,9 +332,16 @@ async function openTree(id, first) {
     try {
       S.persons = list; S.A = analyze(list, S.tree.anchorId);
       renderTab(true);
+      if (S.jumpAfterLoad && S.A.byId.has(S.jumpAfterLoad)) { const j = S.jumpAfterLoad; S.jumpAfterLoad = null; go('tree'); setTimeout(() => jumpTo(j), 150); }
+      if (store('pendingLink') && list.length && !S.linkBusy) {
+        const c = store('pendingLink'); store('pendingLink', null); S.linkBusy = true;
+        if (!canEdit()) toast('Cần quyền biên tập gia phả để liên kết hồ sơ.', 5000);
+        else setTimeout(() => linkWithCode(null, c).finally(() => (S.linkBusy = false)), 300);
+      }
     } catch (e) { console.error(e); toast('Lỗi hiển thị: ' + e.message, 4000); }
     if (sheetOpen() && S.sel && S.openPerson === S.sel && !S.formOpen) showPerson(S.sel, true);
   });
+  loadLinks();
   if (canEdit()) D.listProposals(id).then((l) => { S.propCount = l.length; setBadge(); if (S.tab === 'home') renderTab(); }).catch(() => {});
 }
 
@@ -432,7 +441,7 @@ let LAYOUT = null;
 function drawTree() {
   if (!S.A || !$('tsvg')) return;
   LAYOUT = layout(S.A, S.collapsed);
-  renderTree($('tsvg'), LAYOUT, S.A, S.sel);
+  renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []));
 }
 // tên trên cây được đo theo font Be Vietnam Pro → vẽ lại khi font tải xong
 if (document.fonts) document.fonts.ready.then(() => { if (S.tab === 'tree') drawTree(); });
@@ -492,12 +501,14 @@ function showPerson(id, refresh) {
       ${isOwner() && S.tree.anchorId !== id ? '<button class="abtn" data-a="anchor"><i class="fa-solid fa-flag"></i>Đặt làm đời 1</button>' : ''}
       <button class="abtn red ${isOwner() && S.tree.anchorId !== id ? '' : 'full'}" data-a="del"><i class="fa-solid fa-trash"></i>Xóa</button>
     </div>` : `<div class="sacts"><button class="abtn blue full" data-a="propose"><i class="fa-solid fa-paper-plane"></i>Đề xuất sửa thông tin</button></div>`}
+    ${linksBlock(p)}
     <p style="font-size:var(--fs-sm);color:var(--muted);margin-top:14px;text-align:center">Cập nhật ${esc(ago(p.updatedAt))}</p>`;
   if (refresh) { const sc = $('sheet').scrollTop; $('sheet').innerHTML = `<div class="grab"></div>${html}`; $('sheet').scrollTop = sc; }
   else openSheet(html);
   const sh = $('sheet');
   sh.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => { S.sel = b.dataset.p; if (S.tab === 'tree' && S.pz) jumpTo(b.dataset.p); else showPerson(b.dataset.p, true); }));
   sh.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => personAction(p, b.dataset.a)));
+  bindLinks(p);
 }
 
 async function personAction(p, a) {
@@ -508,6 +519,8 @@ async function personAction(p, a) {
   if (a === 'insert') return personForm(null, { mode: 'insert', of: p });
   if (a === 'link') return linkForm(p);
   if (a === 'propose') return propose(p);
+  if (a === 'share') return shareForLink(p);
+  if (a === 'linkcode') return linkWithCode(p);
   if (a === 'anchor') {
     if (!(await ask({ title: 'Đặt làm mốc đời 1?', msg: `<b>${esc(pname(p))}</b> sẽ là đời 1. Những người phía trên hiện là "Thượng tổ".`, ok: 'Đặt mốc' }))) return;
     try { await D.updateTree(S.tree.id, { anchorId: p.id }); S.tree.anchorId = p.id; S.A = analyze(S.persons, p.id); renderTab(true); showPerson(p.id, true); toast('Đã đặt mốc đời 1'); }
@@ -822,6 +835,89 @@ function renderGio(m) {
   m.querySelectorAll('[data-p]').forEach((el) => (el.onclick = () => showPerson(el.dataset.p)));
 }
 
+// ======================= Liên kết hồ sơ giữa 2 gia phả (nội – ngoại, họ vợ) – BA-lien-ket.md =======================
+async function loadLinks() {
+  if (!S.tree) return;
+  try { S.links = await D.listLinks(S.tree.id); } catch (e) { S.links = new Map(); }
+  if (S.tab === 'tree') drawTree();
+  if (sheetOpen() && S.openPerson && !S.formOpen) showPerson(S.openPerson, true);
+}
+/** Khối "Liên kết gia phả khác" trong hồ sơ một người */
+function linksBlock(p) {
+  const arr = (S.links && S.links.get(p.id)) || [];
+  if (!arr.length && !canEdit()) return '';
+  return `<div class="fsec"><i class="fa-solid fa-link"></i>Liên kết gia phả khác</div>
+    ${arr.length ? `<div class="rows">${arr.map((l) => `<div class="r lkrow"><i class="fa-solid fa-landmark"></i><div style="flex:1;min-width:0"><b>${esc(l.other.name)}</b>
+        <small>${esc(l.other.clanName)} · ${esc(l.other.treeName)}${l.other.info ? ' · ' + esc(l.other.info) : ''}</small></div>
+        <button class="abtn sm" data-lopen="${esc(l.id)}">Mở</button>${canEdit() ? `<button class="abtn sm red" data-lrm="${esc(l.id)}" title="Gỡ liên kết"><i class="fa-solid fa-link-slash"></i></button>` : ''}</div>`).join('')}</div>` : ''}
+    ${canEdit() ? `<div class="sacts"><button class="abtn" data-a="share"><i class="fa-solid fa-share-nodes"></i>Gửi link liên kết</button><button class="abtn" data-a="linkcode"><i class="fa-solid fa-link"></i>Liên kết bằng mã</button></div>` : ''}`;
+}
+function bindLinks(p) {
+  const sh = $('sheet');
+  sh.querySelectorAll('[data-lopen]').forEach((b) => (b.onclick = () => openLinked(((S.links.get(p.id) || []).find((l) => l.id === b.dataset.lopen) || {}).other)));
+  sh.querySelectorAll('[data-lrm]').forEach((b) => (b.onclick = async () => {
+    const l = (S.links.get(p.id) || []).find((x) => x.id === b.dataset.lrm);
+    if (!(await ask({ title: 'Gỡ liên kết?', msg: `<b>${esc(pname(p))}</b> sẽ không còn nối với <b>${esc(l.other.name)}</b> (${esc(l.other.clanName)}). Dữ liệu 2 gia phả không bị xóa.`, ok: 'Gỡ', danger: true }))) return;
+    try { await D.removeLink(l.id); toast('Đã gỡ liên kết'); loadLinks(); } catch (e) { toast(D.errMsg(e), 4000); }
+  }));
+}
+/** Bên có hồ sơ: tạo mã/link (hạn 7 ngày) gửi cho bên kia */
+async function shareForLink(p) {
+  busy('Đang tạo link…');
+  let code;
+  try { code = await D.createShareCode(S.tree, p, [S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · ')); }
+  catch (e) { busy(); return toast(D.errMsg(e), 4000); }
+  busy();
+  const url = D.shareLink(code);
+  const ok = await ask({ title: 'Link liên kết hồ sơ', ok: 'Copy link',
+    msg: `Gửi link này cho <b>quản trị / biên tập bên họ kia</b> (hạn 7 ngày). Họ mở link, đăng nhập tài khoản dòng họ của họ, rồi chọn người tương ứng với <b>${esc(pname(p))}</b> trong gia phả của họ.<br><br><span class="codebox">${esc(url)}</span>` });
+  if (ok) { try { await navigator.clipboard.writeText(`Liên kết hồ sơ "${pname(p)}" (${D.clan.name}) trên Gia phả: ${url}`); toast('Đã copy link – dán gửi qua Zalo'); } catch (e) { toast('Không copy được, hãy bấm giữ link để copy', 4000); } }
+}
+const codeFrom = (v) => { try { return new URL(v).searchParams.get('link') || v; } catch (e) { return v; } };
+/** Bên nhận: liên kết người p (cây đang mở) với hồ sơ trong mã */
+async function linkWithCode(p, code) {
+  if (!code) {
+    const v = await ask({ title: 'Liên kết bằng mã', msg: `Dán link hoặc mã liên kết bên họ kia gửi cho <b>${esc(pname(p))}</b>.`, fields: [{ id: 'c', ph: 'Link hoặc mã liên kết' }], ok: 'Tiếp tục', validate: (v) => (!v.c ? 'Chưa nhập mã' : '') });
+    if (!v) return;
+    code = codeFrom(v.c.trim());
+  }
+  busy('Đang kiểm tra mã…');
+  let sc;
+  try { sc = await D.peekShareCode(code); } catch (e) { busy(); return toast(D.errMsg(e), 5000); }
+  busy();
+  if (!p) {   // mở từ link: chọn người tương ứng trong cây đang mở
+    const opts = [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi'))
+      .map((x) => [x.id, `${pname(x)}${S.A.label(x.id) ? ' · ' + S.A.label(x.id) : ''}${lifeText(x) ? ' · ' + lifeText(x) : ''}`]);
+    if (!opts.length) return toast('Gia phả đang mở chưa có ai để liên kết.', 4000);
+    const id = await pick({ title: `Ai trong "${S.tree.name}" là ${sc.name} (${sc.clanName})?`, options: opts });
+    if (!id) return;
+    p = byId(id);
+  }
+  const ok = await ask({ title: 'Xác nhận liên kết', ok: 'Liên kết',
+    msg: `<b>${esc(pname(p))}</b> – ${esc(S.tree.name)}<br>là cùng một người với<br><b>${esc(sc.name)}</b> – ${esc(sc.clanName)} · ${esc(sc.treeName)}${sc.info ? ' · ' + esc(sc.info) : ''}<br><br><small>Liên kết không mở quyền xem dữ liệu giữa 2 dòng họ.</small>` });
+  if (!ok) return;
+  busy('Đang liên kết…');
+  try { await D.createLink(sc, S.tree, p); busy(); toast('Đã liên kết'); await loadLinks(); showPerson(p.id); }
+  catch (e) { busy(); toast(D.errMsg(e), 5000); }
+}
+/** Mở hồ sơ bên kia: cùng dòng họ → mở luôn; khác dòng họ → chuyển sang tài khoản đã lưu của họ đó */
+async function openLinked(o) {
+  if (!o) return;
+  if (o.clan === D.clan.code) {
+    if (!D.myTrees().some((t) => t.id === o.tree)) return toast('Bạn chưa được cấp quyền xem gia phả đó.', 4000);
+    S.jumpAfterLoad = o.person; closeSheet(true); return openTree(o.tree);
+  }
+  const acc = savedAccs().find((a) => a.code === o.clan);
+  if (!acc) {
+    return ask({ title: `Hồ sơ thuộc ${o.clanName}`, ok: 'Đã hiểu',
+      msg: `<b>${esc(o.name)}</b> ở gia phả <b>${esc(o.treeName)}</b> của dòng họ <b>${esc(o.clanName)}</b> (mã <b>${esc(o.clan)}</b>).<br><br>Để xem, hãy nhờ quản trị họ đó cấp tài khoản, rồi đăng nhập bằng <b>Chuyển tài khoản → Đăng nhập tài khoản khác</b>.` });
+  }
+  if (!(await ask({ title: `Mở bên ${o.clanName}?`, msg: `App sẽ đăng xuất và chuyển sang tài khoản <b>${esc(acc.name || acc.user)}</b> của dòng họ <b>${esc(o.clanName)}</b>. Đăng nhập xong sẽ mở thẳng hồ sơ <b>${esc(o.name)}</b>.`, ok: 'Chuyển' }))) return;
+  store('openAfterLogin', { clan: o.clan, tree: o.tree, person: o.person });
+  store('accounts', [acc, ...savedAccs().filter((a) => a !== acc)]);
+  D.logout();
+}
+
 // ======================= Nhiều hơn (giống ech-client: header xanh + lưới chức năng theo nhóm) =======================
 function renderMore(m) {
   const a = D.account, groups = {};
@@ -906,12 +1002,12 @@ async function editClan() {
 // ======================= Quản lý gia phả (root) =======================
 function renderTrees(m) {
   const tr = D.myTrees(), left = D.LIMIT_TREES - (D.clan.treeCount || 0);
-  m.innerHTML = `<div class="page"><div class="sec"><i class="fa-solid fa-book"></i> Gia phả của dòng họ <span class="n">${tr.length}/${D.LIMIT_TREES}</span></div>
+  m.innerHTML = `<div class="page"><div class="sec"><i class="fa-solid fa-book"></i> Gia phả của dòng họ</div>
     <div class="tgrid">${tr.map((t, i) => { const c = COLORS[i % COLORS.length]; return `<div class="tcard" data-t="${esc(t.id)}" style="--c1:${c[0]};--c2:${c[1]}">
       <div class="tn1">${esc(t.name)}</div><div class="tn2">${S.tree && S.tree.id === t.id ? 'Đang mở' : 'Bấm để mở'}</div><i class="fa-solid fa-sitemap tic"></i></div>`; }).join('')}
       ${left > 0 ? `<button class="addtile" id="tNew"><span><i class="fa-solid fa-plus"></i>Tạo gia phả mới<br><small style="font-weight:500;color:var(--muted)">Còn tạo được ${left}</small></span></button>` : ''}</div>
     ${S.tree ? `<div class="sacts"><button class="abtn full" id="tSet"><i class="fa-solid fa-pen"></i>Sửa thông tin gia phả đang mở</button></div>` : ''}
-    <p class="note">Mỗi dòng họ tạo tối đa ${D.LIMIT_TREES} gia phả. Gán người dùng vào từng gia phả ở mục <b>Người dùng</b>.</p></div>`;
+    <p class="note">Mỗi dòng họ có <b>1 gia phả</b>. Họ ngoại, họ vợ… tự đăng ký dòng họ của họ rồi nối hồ sơ trùng người bằng <b>Gửi link liên kết</b> trong hồ sơ. Xem gia phả họ khác bằng 1 tài khoản: tính năng chia sẻ (sắp có).</p></div>`;
   m.querySelectorAll('[data-t]').forEach((el) => (el.onclick = () => { openTree(el.dataset.t).then(() => go('tree')); }));
   if ($('tNew')) $('tNew').onclick = newTree;
   if ($('tSet')) $('tSet').onclick = treeSettings;

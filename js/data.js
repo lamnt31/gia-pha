@@ -10,9 +10,9 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, CACHE_SIZE_UNLIMITED, connectFirestoreEmulator,
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
-  writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc,
+  writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey } from './firebase-config.js?v=1792049509823';
+import { firebaseConfig, recaptchaSiteKey } from './firebase-config.js?v=1792053529764';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -26,7 +26,7 @@ if (!isEmu && recaptchaSiteKey) {
     initializeAppCheck(app, { provider: new ReCaptchaV3Provider(recaptchaSiteKey), isTokenAutoRefreshEnabled: true }));
 }
 
-export const LIMIT_TREES = 3, LIMIT_PERSONS = 5000;
+export const LIMIT_TREES = 1, LIMIT_PERSONS = 5000;   // mỗi dòng họ 1 gia phả; xem họ khác bằng chia sẻ (làm sau)
 export const CODE_RE = /^[a-z0-9][a-z0-9-]{2,29}$/;      // mã dòng họ
 export const USER_RE = /^[a-z0-9][a-z0-9._]{1,29}$/;     // tên đăng nhập
 // Người dùng không có email: đăng nhập bằng email "ảo" không gửi thư được (chỉ để Firebase Auth nhận diện)
@@ -351,3 +351,44 @@ export async function listLog(treeId, n = 60) {
 
 /** Tạo sẵn mã cho người mới (để nối quan hệ trong cùng 1 batch) */
 export const newPersonId = (treeId) => doc(collection(db, 'trees', treeId, 'persons')).id;
+
+// ======================= Liên kết hồ sơ giữa 2 gia phả (nội – ngoại, họ vợ) =======================
+// Bên B (có hồ sơ) tạo mã hồ sơ → gửi link → bên A chọn người tương ứng trong cây mình → tạo liên kết.
+const randomCode = () => { const a = crypto.getRandomValues(new Uint8Array(18)); return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_'); };
+export async function createShareCode(tree, person, info = '', days = 7) {
+  const code = randomCode();
+  await setDoc(doc(db, 'shareCodes', code), {
+    clan: clan.code, clanName: clan.name || clan.code, tree: tree.id, treeName: tree.name, person: person.id, name: person.name || 'Chưa rõ tên', info,
+    createdBy: me.uid, createdByName: myName(), createdAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + days * 864e5),
+  });
+  return code;
+}
+export const shareLink = (code) => `${location.origin}${location.pathname}?link=${encodeURIComponent(code)}`;
+export async function peekShareCode(code) {
+  const s = await getDoc(doc(db, 'shareCodes', code));
+  if (!s.exists()) throw new Error('Mã liên kết không tồn tại hoặc đã bị hủy.');
+  const d = s.data();
+  if (d.expiresAt.toMillis() < Date.now()) throw new Error('Mã liên kết đã hết hạn. Hãy xin bên kia gửi mã mới.');
+  return { code, ...d };
+}
+/** Tạo liên kết: a = người trong cây đang mở (của tôi), b = người trong mã hồ sơ */
+export async function createLink(sc, tree, person) {
+  const a = { clan: clan.code, clanName: clan.name || clan.code, tree: tree.id, treeName: tree.name, person: person.id, name: person.name || 'Chưa rõ tên' };
+  const b = { clan: sc.clan, clanName: sc.clanName, tree: sc.tree, treeName: sc.treeName, person: sc.person, name: sc.name, info: sc.info || '' };
+  if (a.tree === b.tree) throw new Error('Hai hồ sơ cùng một gia phả – hãy dùng "Nối quan hệ".');
+  const id = `${a.tree}_${a.person}__${b.tree}_${b.person}`;
+  const ref = doc(db, 'links', id);
+  try { await setDoc(ref, { a, b, code: sc.code, by: me.uid, byName: myName(), at: serverTimestamp() }); }
+  catch (e) { if (String(e.code).includes('permission')) throw new Error('Không liên kết được: đã liên kết rồi, mã hết hạn, hoặc bạn không có quyền sửa gia phả này.'); throw e; }
+  return id;
+}
+/** Liên kết của 1 gia phả → Map(personId → [{id, other:{clan, clanName, tree, treeName, person, name, info}}]) */
+export async function listLinks(treeId) {
+  const col = collection(db, 'links');
+  const [x, y] = await Promise.all([getDocs(query(col, where('a.tree', '==', treeId))), getDocs(query(col, where('b.tree', '==', treeId)))]);
+  const m = new Map(), add = (pid, v) => { if (!m.has(pid)) m.set(pid, []); m.get(pid).push(v); };
+  x.forEach((d) => { const v = d.data(); add(v.a.person, { id: d.id, other: v.b, by: v.byName }); });
+  y.forEach((d) => { const v = d.data(); add(v.b.person, { id: d.id, other: v.a, by: v.byName }); });
+  return m;
+}
+export const removeLink = (id) => deleteDoc(doc(db, 'links', id));

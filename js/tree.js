@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792049509823';
+import { esc } from './ui.js?v=1792053529764';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -138,13 +138,13 @@ function fit(t, maxW, px, minPx, w = 700) {
 }
 
 /** Vẽ cây vào svg; trả về hàm render lại */
-export function renderTree(svg, L, A, selectedId) {
+export function renderTree(svg, L, A, selectedId, linked = new Set()) {
   const node = (n) => {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
     const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
     const name = p.name || 'Chưa rõ tên';
     const x = p.photo ? 48 : 12, room = NW - x - 8;
-    const [nm, nf] = fit(name, room, 13.5, 11.5);
+    const [nm, nf] = fit(name, room - (linked.has(p.id) ? 14 : 0), 13.5, 11.5);
     const [gen] = fit(A.label(p.id) + (n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''), room, 10.5, 10.5, 600);
     return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})">
       <title>${esc(name)}</title>
@@ -153,6 +153,7 @@ export function renderTree(svg, L, A, selectedId) {
       <text x="${x}" y="24" class="nm" style="font-size:${nf}px">${esc(nm)}</text>
       <text x="${x}" y="42" class="sub">${esc(years(p))}</text>
       <text x="${x}" y="57" class="gen">${esc(gen)}</text>
+      ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
     </g>`;
   };

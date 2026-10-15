@@ -308,6 +308,10 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .tn .sub { font-size: 11.5px; fill: var(--muted); }
   .tn .gen { font-size: 10.5px; fill: var(--accent); font-weight: 600; }
   .tn { cursor: pointer; }
+  .tn .lk { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px; fill: var(--accent); }
+  .lkrow small { display: block; color: var(--muted); font-size: var(--fs-sm); white-space: normal; }
+  .lkrow b { display: block; }
+  .codebox { display: block; word-break: break-all; padding: 8px 10px; border-radius: 10px; background: var(--bg); color: var(--text); font-size: var(--fs-sm); border: 1px dashed var(--ring); }
   .tog circle { fill: var(--card-solid); stroke: var(--link); stroke-width: 1.5; }
   .tog text { font-size: 11px; font-weight: 700; fill: var(--text); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
@@ -352,6 +356,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792049509823"></script>
+<script type="module" src="js/app.js?v=1792053529764"></script>
 </body>
 </html>
