@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792048047941';
+import { esc } from './ui.js?v=1792048290959';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -125,7 +125,17 @@ const years = (p) => {
   if (p.alive === false || d) return `${b || '?'} – ${d || '?'}`;
   return b ? `${b}` : '';
 };
-const short = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+// Đo độ rộng chữ thật (chữ Việt có dấu rộng hẹp khác nhau) để tên không tràn khỏi ô
+const CTX = document.createElement('canvas').getContext('2d');
+const FONT = '"Be Vietnam Pro", -apple-system, "Segoe UI", Roboto, sans-serif';
+const textW = (t, px, w) => { CTX.font = `${w} ${px}px ${FONT}`; return CTX.measureText(t).width; };
+/** Vừa ô: giữ cỡ; hơi dài: thu nhỏ dần tới minPx; vẫn dài: cắt + "…". Trả về [chữ, cỡ] */
+function fit(t, maxW, px, minPx, w = 700) {
+  for (let f = px; f >= minPx; f -= 0.5) if (textW(t, f, w) <= maxW) return [t, f];
+  let lo = 0, hi = t.length;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (textW(t.slice(0, mid).trimEnd() + '…', minPx, w) <= maxW) lo = mid; else hi = mid - 1; }
+  return [t.slice(0, lo).trimEnd() + '…', minPx];
+}
 
 /** Vẽ cây vào svg; trả về hàm render lại */
 export function renderTree(svg, L, A, selectedId) {
@@ -133,12 +143,16 @@ export function renderTree(svg, L, A, selectedId) {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
     const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
     const name = p.name || 'Chưa rõ tên';
+    const x = p.photo ? 48 : 12, room = NW - x - 8;
+    const [nm, nf] = fit(name, room, 13.5, 11.5);
+    const [gen] = fit(A.label(p.id) + (n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''), room, 10.5, 10.5, 600);
     return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})">
+      <title>${esc(name)}</title>
       <rect width="${NW}" height="${NH}" rx="10"/>
       ${p.photo ? `<clipPath id="c${esc(p.id)}"><circle cx="24" cy="${NH / 2}" r="16"/></clipPath><image href="${esc(p.photo)}" x="8" y="${NH / 2 - 16}" width="32" height="32" clip-path="url(#c${esc(p.id)})"/>` : ''}
-      <text x="${p.photo ? 48 : 12}" y="24" class="nm">${esc(short(name, p.photo ? 15 : 19))}</text>
-      <text x="${p.photo ? 48 : 12}" y="42" class="sub">${esc(years(p))}</text>
-      <text x="${p.photo ? 48 : 12}" y="57" class="gen">${esc(A.label(p.id))}${n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''}</text>
+      <text x="${x}" y="24" class="nm" style="font-size:${nf}px">${esc(nm)}</text>
+      <text x="${x}" y="42" class="sub">${esc(years(p))}</text>
+      <text x="${x}" y="57" class="gen">${esc(gen)}</text>
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
     </g>`;
   };

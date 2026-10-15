@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792048047941';
-import * as D from './data.js?v=1792048047941';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792048047941';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792048047941';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792048290959';
+import * as D from './data.js?v=1792048290959';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792048290959';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792048290959';
 
-const APP_VER = '15/10 14:07';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 14:11';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -433,6 +433,8 @@ function drawTree() {
   LAYOUT = layout(S.A, S.collapsed);
   renderTree($('tsvg'), LAYOUT, S.A, S.sel);
 }
+// tên trên cây được đo theo font Be Vietnam Pro → vẽ lại khi font tải xong
+if (document.fonts) document.fonts.ready.then(() => { if (S.tab === 'tree') drawTree(); });
 function jumpTo(id, open = true) {
   // mở các nhánh đang thu gọn chứa người này
   let p = byId(id), changed = false;
