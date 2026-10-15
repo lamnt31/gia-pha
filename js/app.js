@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792057291313';
-import * as D from './data.js?v=1792057291313';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792057291313';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792057291313';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792059039840';
+import * as D from './data.js?v=1792059039840';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792059039840';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792059039840';
 
-const APP_VER = '15/10 16:41';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 17:10';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -108,7 +108,10 @@ applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
 initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
 
-D.onUser(async (u, err) => {
+// ?collect=<mã>: người nhận link nhờ điền thông tin – không cần tài khoản, không vào app
+const COLLECT_CODE = new URLSearchParams(location.search).get('collect');
+if (COLLECT_CODE) renderCollect(COLLECT_CODE);
+else D.onUser(async (u, err) => {
   if (!u) {
     D.stopPersons(); S.tree = null; $('app').hidden = true; $('gate').hidden = false; closeSheet(true);
     renderLogin(err ? D.errMsg(err) : '');
@@ -264,7 +267,7 @@ const NAV = [
   { k: 'tree', ic: 'fa-sitemap', n: 'Cây', ok: () => !!S.tree },
   { k: 'list', ic: 'fa-list', n: 'Danh sách', ok: () => !!S.tree },
   { k: 'gio', ic: 'fa-calendar-days', n: 'Lịch', ok: () => !!S.tree },
-  { k: 'props', ic: 'fa-inbox', n: 'Đề xuất', ok: () => !!S.tree && canEdit(), g: 'Gia phả' },
+  { k: 'props', ic: 'fa-clipboard-check', n: 'Duyệt thông tin', ok: () => !!S.tree && canEdit(), g: 'Gia phả' },
   { k: 'log', ic: 'fa-clock-rotate-left', n: 'Nhật ký', ok: () => !!S.tree && S.role !== 'viewer', g: 'Gia phả' },
   { k: 'users', ic: 'fa-users-gear', n: 'Người dùng', ok: () => D.isRoot(), g: 'Quản trị' },
   { k: 'trees', ic: 'fa-book', n: 'Gia phả', ok: () => D.isRoot(), g: 'Quản trị' },
@@ -273,7 +276,7 @@ const navOk = () => NAV.filter((x) => x.ok());
 function shell() {
   const ok = navOk(), mobile = [ok[0], ...ok.slice(1, 4)], tr = D.myTrees();
   if (S.tab !== 'more' && !ok.some((x) => x.k === S.tab)) S.tab = 'home';
-  const tab = (x, cls) => `<button class="${cls} ${S.tab === x.k ? 'on' : ''}" data-tab="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span>${x.k === 'props' ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}</button>`;
+  const tab = (x, cls) => `<button class="${cls} ${S.tab === x.k ? 'on' : ''}" data-tab="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span>${x.k === 'props' || x.badge ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}</button>`;
   $('app').innerHTML = `
     <div class="top">
       <button class="tsw" id="treeSw"><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
@@ -281,7 +284,7 @@ function shell() {
       <button class="ibtn" id="scanBtn" title="Quét mã QR (nhận chia sẻ / liên kết)"><i class="fa-solid fa-qrcode"></i></button>
       <button class="ibtn" id="themeBtn"></button>
     </div>
-    <nav class="nav mob">${mobile.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn' }, 'ntab')}</nav>
+    <nav class="nav mob">${mobile.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn', badge: 1 }, 'ntab')}</nav>
     <nav class="nav desk"><div class="rlogo"><i class="fa-solid fa-sitemap"></i></div>${ok.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn' }, 'ntab')}</nav>
     <main id="main"></main>`;
   applyTheme(document.documentElement.dataset.theme);
@@ -353,7 +356,7 @@ async function openTree(id, first) {
     if (sheetOpen() && S.sel && S.openPerson === S.sel && !S.formOpen) showPerson(S.sel, true);
   });
   loadLinks();
-  if (canEdit()) D.listProposals(id).then((l) => { S.propCount = l.length; setBadge(); if (S.tab === 'home') renderTab(); }).catch(() => {});
+  if (canEdit()) Promise.all([D.listProposals(id), D.listCollectSubs(id).catch(() => [])]).then(([l, c]) => { S.propCount = l.length + c.length; setBadge(); if (S.tab === 'home') renderTab(); }).catch(() => {});
 }
 
 function renderTab(fromData) {
@@ -397,7 +400,7 @@ function renderHome(m) {
       <div class="stat"><div class="k"><i class="fa-solid fa-heart-pulse"></i> Còn sống</div><div class="v">${P.filter((p) => !isDead(p)).length}</div></div>
       <div class="stat"><div class="k"><i class="fa-solid fa-dove"></i> Đã mất</div><div class="v">${P.filter(isDead).length}</div></div>
     </div>
-    ${S.propCount && canEdit() ? `<div class="panel" style="margin-top:14px"><div class="item" data-go="props"><div class="ic warn"><i class="fa-solid fa-inbox"></i></div><div class="t"><b>${S.propCount} đề xuất chờ xử lý</b><span>Thành viên gửi thông tin cần sửa</span></div><i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i></div></div>` : ''}
+    ${S.propCount && canEdit() ? `<div class="panel" style="margin-top:14px"><div class="item" data-go="props"><div class="ic warn"><i class="fa-solid fa-inbox"></i></div><div class="t"><b>${S.propCount} thông tin chờ duyệt</b><span>Từ link nhờ điền và đề xuất của thành viên – bấm để duyệt</span></div><i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i></div></div>` : ''}
     <div class="sec"><i class="fa-solid fa-bell"></i> Giỗ, sinh nhật 30 ngày tới <span class="n">${gio.length}</span></div>
     <div class="panel">${gio.length ? gio.slice(0, 10).map(eventItem).join('')
       : `<div class="empty" style="padding:20px">${ready ? 'Không có ngày giỗ, sinh nhật nào trong 30 ngày tới' : '<i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…'}</div>`}</div>
@@ -512,6 +515,7 @@ function showPerson(id, refresh) {
       <button class="abtn" data-a="parent" ${f && mo ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i>Thêm ${!f ? 'cha' : 'mẹ'}</button>
       <button class="abtn" data-a="insert" ${f || mo ? '' : 'disabled'}><i class="fa-solid fa-arrows-up-down"></i>Chèn đời ở giữa</button>
       <button class="abtn" data-a="link"><i class="fa-solid fa-link"></i>Nối quan hệ</button>
+      <button class="abtn" data-a="collect"><i class="fa-solid fa-file-pen"></i>Nhờ người khác điền</button>
       ${isOwner() && S.tree.anchorId !== id ? '<button class="abtn" data-a="anchor"><i class="fa-solid fa-flag"></i>Đặt làm đời 1</button>' : ''}
       <button class="abtn red ${isOwner() && S.tree.anchorId !== id ? '' : 'full'}" data-a="del"><i class="fa-solid fa-trash"></i>Xóa</button>
     </div>` : S.role === 'viewer' ? '' : `<div class="sacts"><button class="abtn blue full" data-a="propose"><i class="fa-solid fa-paper-plane"></i>Đề xuất sửa thông tin</button></div>`}
@@ -534,6 +538,7 @@ async function personAction(p, a) {
   if (a === 'link') return linkForm(p);
   if (a === 'propose') return propose(p);
   if (a === 'share') return shareForLink(p);
+  if (a === 'collect') return collectLinkFor(p);
   if (a === 'linkcode') return linkWithCode(p);
   if (a === 'anchor') {
     if (!(await ask({ title: 'Đặt làm mốc đời 1?', msg: `<b>${esc(pname(p))}</b> sẽ là đời 1. Những người phía trên hiện là "Thượng tổ".`, ok: 'Đặt mốc' }))) return;
@@ -552,71 +557,8 @@ async function personAction(p, a) {
 
 // ======================= Form thêm / sửa =======================
 const FIELDS = ['name', 'nick', 'alias', 'gender', 'branch', 'order', 'adopted', 'birthSolar', 'birthLunar', 'alive', 'deathSolar', 'deathLunar', 'birthPlace', 'address', 'burial', 'job', 'note', 'photo'];
-function personForm(p, ctx) {
-  const of = ctx.of, isNew = !p;
-  const d = p ? { ...p } : { gender: 'm', alive: true };
-  if (ctx.mode === 'spouse') d.gender = of.gender === 'f' ? 'm' : 'f';
-  if (ctx.mode === 'parent') d.gender = ctx.as;   // as = giới tính người cha/mẹ cần thêm
-  if (ctx.mode === 'parent' || ctx.mode === 'insert') d.alive = isDead(of) ? false : true;
-  if (ctx.mode === 'insert') d.gender = byId(of.fatherId) ? 'm' : 'f';
-  if (ctx.mode === 'child') {
-    const sibs = S.persons.filter((k) => k.fatherId === of.id || k.motherId === of.id);
-    d.order = sibs.length + 1;
-  }
-  const title = { first: 'Thêm người', edit: 'Sửa thông tin', child: `Thêm con của ${pname(of)}`, spouse: `Thêm ${of && of.gender === 'f' ? 'chồng' : 'vợ'} của ${pname(of)}`,
-    parent: `Thêm ${ctx.as === 'm' ? 'cha' : 'mẹ'} của ${pname(of)}`, insert: `Chèn đời giữa ${pname(of)} và ${pname(byId(of && (of.fatherId || of.motherId)))}` }[ctx.mode];
-  // chọn cha/mẹ còn lại khi thêm con
-  let otherSel = '';
-  if (ctx.mode === 'child') {
-    const sp = (of.spouseIds || []).map(byId).filter(Boolean);
-    otherSel = `<div class="fld full"><label>${of.gender === 'f' ? 'Cha' : 'Mẹ'}</label><select id="f_other"><option value="">— Chưa rõ —</option>${sp.map((s, i) => `<option value="${esc(s.id)}" ${i === 0 ? 'selected' : ''}>${esc(pname(s))}</option>`).join('')}</select></div>`;
-  }
-  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}</h2>
-    ${ctx.mode === 'insert' ? '<p style="font-size:var(--fs-base);color:var(--muted);margin:0">Người mới sẽ là con của đời trên và là cha/mẹ của người đang chọn. Số đời phía dưới tự tăng 1.</p>' : ''}
-    <form id="pf">
-    <div class="phw"><div class="ph ${d.gender === 'f' ? 'f' : 'm'}" id="fph">${d.photo ? `<img src="${esc(d.photo)}">` : '<i class="fa-solid fa-camera"></i>'}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="abtn sm" id="fphb"><i class="fa-solid fa-image"></i>Chọn ảnh</button>${d.photo ? '<button type="button" class="abtn sm red" id="fphx">Bỏ ảnh</button>' : ''}</div></div>
-    <div class="fgrid">
-      <div class="fld full"><label>Họ và tên</label><input id="f_name" value="${esc(d.name || '')}" placeholder="Để trống nếu chưa rõ" maxlength="120"></div>
-      <div class="fld full"><label>Giới tính</label><div class="seg"><label><input type="radio" name="g" value="m" ${d.gender !== 'f' ? 'checked' : ''}>Nam</label><label><input type="radio" name="g" value="f" ${d.gender === 'f' ? 'checked' : ''}>Nữ</label></div></div>
-      ${otherSel}
-      <div class="fld"><label>Tên thường gọi</label><input id="f_nick" value="${esc(d.nick || '')}"></div>
-      <div class="fld"><label>Tên húy / tự / hiệu</label><input id="f_alias" value="${esc(d.alias || '')}"></div>
-      <div class="fld"><label>Chi / phái</label><input id="f_branch" value="${esc(d.branch || '')}" list="branches"></div>
-      <div class="fld"><label>Con thứ</label><input id="f_order" type="number" min="1" max="30" value="${esc(d.order || '')}"></div>
-      <label class="ck full"><input type="checkbox" id="f_adopted" ${d.adopted ? 'checked' : ''}>Con nuôi</label>
-    </div>
-    <div class="fsec"><i class="fa-solid fa-cake-candles"></i>Ngày sinh</div>
-    <div class="fgrid">
-      <div class="fld"><label>Dương lịch</label><input id="f_birthSolar" value="${esc(d.birthSolar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_birthSolar">Chỉ nhớ năm: gõ 4 số</div></div>
-      <div class="fld"><label>Âm lịch</label><input id="f_birthLunar" value="${esc(d.birthLunar || '')}" placeholder="tự tính từ ngày dương" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_birthLunar"></div></div>
-    </div>
-    <label class="ck"><input type="checkbox" id="f_dead" ${d.alive === false || d.deathSolar || d.deathLunar ? 'checked' : ''}>Đã mất</label>
-    <div id="deadBox">
-      <div class="fgrid">
-        <div class="fld"><label>Ngày mất dương lịch</label><input id="f_deathSolar" value="${esc(d.deathSolar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_deathSolar">Chỉ nhớ năm: gõ 4 số</div></div>
-        <div class="fld"><label>Ngày mất âm lịch (giỗ)</label><input id="f_deathLunar" value="${esc(d.deathLunar || '')}" placeholder="tự tính từ ngày dương" inputmode="numeric" maxlength="10" data-mask="dm"><div class="hint" id="h_deathLunar"></div></div>
-        <div class="fld full"><label>Nơi an táng</label><input id="f_burial" value="${esc(d.burial || '')}"></div>
-      </div>
-    </div>
-    <div class="fsec"><i class="fa-solid fa-circle-info"></i>Thông tin khác</div>
-    <div class="fgrid">
-      <div class="fld"><label>Nơi sinh / quê</label><input id="f_birthPlace" value="${esc(d.birthPlace || '')}"></div>
-      <div class="fld"><label>Nơi ở</label><input id="f_address" value="${esc(d.address || '')}"></div>
-      <div class="fld full"><label>Nghề nghiệp, học vị, chức vụ</label><input id="f_job" value="${esc(d.job || '')}"></div>
-      <div class="fld full"><label>Ghi chú, tiểu sử</label><textarea id="f_note" maxlength="5000">${esc(d.note || '')}</textarea></div>
-    </div>
-    <datalist id="branches">${[...new Set(S.persons.map((x) => x.branch).filter(Boolean))].map((b) => `<option value="${esc(b)}">`).join('')}</datalist>
-    <div class="fbar"><button type="button" class="abtn" id="fcancel">Hủy</button><button class="abtn blue"><i class="fa-solid fa-check"></i>Lưu</button></div>
-    </form>`;
-  let dirty = false, photo = d.photo || '';
-  openSheet(html, { beforeClose: () => (dirty ? (confirmLeave(), false) : true) });
-  S.formOpen = true;
-  const sh = $('sheet');
-  sh.querySelectorAll('input,select,textarea').forEach((el) => el.addEventListener('input', () => (dirty = true)));
-  const deadToggle = () => ($('deadBox').hidden = !$('f_dead').checked);
-  $('f_dead').onchange = deadToggle; deadToggle();
-  sh.querySelectorAll('input[name=g]').forEach((r) => (r.onchange = () => ($('fph').className = 'ph ' + (r.value === 'f' ? 'f' : 'm'))));
+/** Ô ngày sinh / mất (id f_birthSolar…, gợi ý h_…): mặt nạ dd/mm/yyyy, tự tính âm ↔ dương, gợi ý. Dùng cho form hồ sơ và form nhờ điền */
+function bindDateInputs(sh) {
   // ô ngày: chỉ gõ số, tự chèn "/" (dd/mm/yyyy). Ô dương lịch: gõ 4 số = chỉ nhớ năm.
   sh.querySelectorAll('[data-mask]').forEach((el) => el.addEventListener('input', (e) => maskDate(el, e)));
   // Tự tính 2 chiều: nhập đủ ngày dương → điền ngày âm; nhập đủ ngày âm (có năm) → điền ngày dương.
@@ -650,13 +592,104 @@ function personForm(p, ctx) {
   };
   hint('birthSolar', solarHint, 'Chỉ nhớ năm: gõ 4 số'); hint('deathSolar', solarHint, 'Chỉ nhớ năm: gõ 4 số'); hint('birthLunar', lunarHint);
   hint('deathLunar', (v) => { if (!validDate(v)) return ['Ngày không hợp lệ', 'bad']; const dl = $('f_deathLunar').dataset.auto && lunarOf($('f_deathSolar').value); const x = parseDate(v); if (!(x[0] && x[1])) return ['Cần ngày và tháng âm để tính giỗ', 'bad']; const n = nextDeathAnniversary(x[0], x[1]); return n ? [`${dl ? 'Tự tính ' + formatLunar(dl) + ' · ' : ''}Giỗ năm nay: ${fmtD(n.solar)}`, 'ok'] : ['']; });
-  // ảnh
-  $('fphb').onclick = () => { $('photoIn').value = ''; $('photoIn').click(); };
+}
+
+/** Các ô của hồ sơ một người (ảnh, tên, giới tính, ngày sinh / mất, nơi ở…) – dùng cho form sửa và form nhờ điền */
+function personFieldsHtml(d, otherSel = '') {
+  return `    <div class="phw"><div class="ph ${d.gender === 'f' ? 'f' : 'm'}" id="fph">${d.photo ? `<img src="${esc(d.photo)}">` : '<i class="fa-solid fa-camera"></i>'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="abtn sm" id="fphb"><i class="fa-solid fa-image"></i>Chọn ảnh</button>${d.photo ? '<button type="button" class="abtn sm red" id="fphx">Bỏ ảnh</button>' : ''}</div></div>
+    <div class="fgrid">
+      <div class="fld full"><label>Họ và tên</label><input id="f_name" value="${esc(d.name || '')}" placeholder="Để trống nếu chưa rõ" maxlength="120"></div>
+      <div class="fld full"><label>Giới tính</label><div class="seg"><label><input type="radio" name="g" value="m" ${d.gender !== 'f' ? 'checked' : ''}>Nam</label><label><input type="radio" name="g" value="f" ${d.gender === 'f' ? 'checked' : ''}>Nữ</label></div></div>
+      ${otherSel}
+      <div class="fld"><label>Tên thường gọi</label><input id="f_nick" value="${esc(d.nick || '')}"></div>
+      <div class="fld"><label>Tên húy / tự / hiệu</label><input id="f_alias" value="${esc(d.alias || '')}"></div>
+      <div class="fld"><label>Chi / phái</label><input id="f_branch" value="${esc(d.branch || '')}" list="branches"></div>
+      <div class="fld"><label>Con thứ</label><input id="f_order" type="number" min="1" max="30" value="${esc(d.order || '')}"></div>
+      <label class="ck full"><input type="checkbox" id="f_adopted" ${d.adopted ? 'checked' : ''}>Con nuôi</label>
+    </div>
+    <div class="fsec"><i class="fa-solid fa-cake-candles"></i>Ngày sinh</div>
+    <div class="fgrid">
+      <div class="fld"><label>Dương lịch</label><input id="f_birthSolar" value="${esc(d.birthSolar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_birthSolar">Chỉ nhớ năm: gõ 4 số</div></div>
+      <div class="fld"><label>Âm lịch</label><input id="f_birthLunar" value="${esc(d.birthLunar || '')}" placeholder="tự tính từ ngày dương" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_birthLunar"></div></div>
+    </div>
+    <label class="ck"><input type="checkbox" id="f_dead" ${d.alive === false || d.deathSolar || d.deathLunar ? 'checked' : ''}>Đã mất</label>
+    <div id="deadBox">
+      <div class="fgrid">
+        <div class="fld"><label>Ngày mất dương lịch</label><input id="f_deathSolar" value="${esc(d.deathSolar || '')}" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" data-mask="solar"><div class="hint" id="h_deathSolar">Chỉ nhớ năm: gõ 4 số</div></div>
+        <div class="fld"><label>Ngày mất âm lịch (giỗ)</label><input id="f_deathLunar" value="${esc(d.deathLunar || '')}" placeholder="tự tính từ ngày dương" inputmode="numeric" maxlength="10" data-mask="dm"><div class="hint" id="h_deathLunar"></div></div>
+        <div class="fld full"><label>Nơi an táng</label><input id="f_burial" value="${esc(d.burial || '')}"></div>
+      </div>
+    </div>
+    <div class="fsec"><i class="fa-solid fa-circle-info"></i>Thông tin khác</div>
+    <div class="fgrid">
+      <div class="fld"><label>Nơi sinh / quê</label><input id="f_birthPlace" value="${esc(d.birthPlace || '')}"></div>
+      <div class="fld"><label>Nơi ở</label><input id="f_address" value="${esc(d.address || '')}"></div>
+      <div class="fld full"><label>Nghề nghiệp, học vị, chức vụ</label><input id="f_job" value="${esc(d.job || '')}"></div>
+      <div class="fld full"><label>Ghi chú, tiểu sử</label><textarea id="f_note" maxlength="5000">${esc(d.note || '')}</textarea></div>
+    </div>
+    <datalist id="branches">${[...new Set((S.persons || []).map((x) => x.branch).filter(Boolean))].map((b) => `<option value="${esc(b)}">`).join('')}</datalist>`;
+}
+/** Gắn sự kiện cho các ô: đã mất, màu theo giới tính, ô ngày, ảnh (cắt vuông + nén ~40 KB). onPhoto(dataUrl | '') */
+function bindPersonFields(root, d, onPhoto) {
+  const q = (id) => root.querySelector('#' + id);
+  const deadToggle = () => (q('deadBox').hidden = !q('f_dead').checked);
+  q('f_dead').onchange = deadToggle; deadToggle();
+  root.querySelectorAll('input[name=g]').forEach((r) => (r.onchange = () => (q('fph').className = 'ph ' + (r.value === 'f' ? 'f' : 'm'))));
+  bindDateInputs(root);
+  q('fphb').onclick = () => { $('photoIn').value = ''; $('photoIn').click(); };
   $('photoIn').onchange = async () => {
     const f = $('photoIn').files[0]; if (!f) return;
-    try { photo = await fileToAvatar(f); dirty = true; $('fph').innerHTML = `<img src="${photo}">`; } catch (e) { toast('Không đọc được ảnh'); }
+    try { const ph = await fileToAvatar(f); onPhoto(ph); q('fph').innerHTML = `<img src="${ph}">`; } catch (e) { toast('Không đọc được ảnh'); }
   };
-  if ($('fphx')) $('fphx').onclick = () => { photo = ''; dirty = true; $('fph').innerHTML = '<i class="fa-solid fa-camera"></i>'; };
+  if (q('fphx')) q('fphx').onclick = () => { onPhoto(''); q('fph').innerHTML = '<i class="fa-solid fa-camera"></i>'; };
+}
+/** Đọc + kiểm tra các ô. Sai ngày → báo và trả về null */
+function readPersonFields(root, photo) {
+  const q = (id) => root.querySelector('#' + id), v = (k) => (q('f_' + k) ? q('f_' + k).value.trim() : '');
+  const dead = q('f_dead').checked;
+  const data = {
+    name: v('name'), nick: v('nick'), alias: v('alias'), branch: v('branch'), gender: root.querySelector('input[name=g]:checked').value,
+    order: Number(v('order')) || null, adopted: q('f_adopted').checked, birthSolar: v('birthSolar'), birthLunar: v('birthLunar'),
+    alive: !dead, deathSolar: dead ? v('deathSolar') : '', deathLunar: dead ? v('deathLunar') : '', burial: dead ? v('burial') : '',
+    birthPlace: v('birthPlace'), address: v('address'), job: v('job'), note: v('note'), photo: photo || '',
+  };
+  for (const k of ['birthSolar', 'deathSolar', 'birthLunar', 'deathLunar']) if (!validDate(data[k])) { toast('Ngày tháng chưa hợp lệ'); q('f_' + k).focus(); return null; }
+  if (data.birthLunar && !(fullDate(data.birthLunar) || yearOf(data.birthLunar))) { toast('Ngày sinh âm cần có năm'); return null; }
+  return data;
+}
+
+function personForm(p, ctx) {
+  const of = ctx.of, isNew = !p;
+  const d = p ? { ...p } : { gender: 'm', alive: true };
+  if (ctx.mode === 'spouse') d.gender = of.gender === 'f' ? 'm' : 'f';
+  if (ctx.mode === 'parent') d.gender = ctx.as;   // as = giới tính người cha/mẹ cần thêm
+  if (ctx.mode === 'parent' || ctx.mode === 'insert') d.alive = isDead(of) ? false : true;
+  if (ctx.mode === 'insert') d.gender = byId(of.fatherId) ? 'm' : 'f';
+  if (ctx.mode === 'child') {
+    const sibs = S.persons.filter((k) => k.fatherId === of.id || k.motherId === of.id);
+    d.order = sibs.length + 1;
+  }
+  const title = { first: 'Thêm người', edit: 'Sửa thông tin', child: `Thêm con của ${pname(of)}`, spouse: `Thêm ${of && of.gender === 'f' ? 'chồng' : 'vợ'} của ${pname(of)}`,
+    parent: `Thêm ${ctx.as === 'm' ? 'cha' : 'mẹ'} của ${pname(of)}`, insert: `Chèn đời giữa ${pname(of)} và ${pname(byId(of && (of.fatherId || of.motherId)))}` }[ctx.mode];
+  // chọn cha/mẹ còn lại khi thêm con
+  let otherSel = '';
+  if (ctx.mode === 'child') {
+    const sp = (of.spouseIds || []).map(byId).filter(Boolean);
+    otherSel = `<div class="fld full"><label>${of.gender === 'f' ? 'Cha' : 'Mẹ'}</label><select id="f_other"><option value="">— Chưa rõ —</option>${sp.map((s, i) => `<option value="${esc(s.id)}" ${i === 0 ? 'selected' : ''}>${esc(pname(s))}</option>`).join('')}</select></div>`;
+  }
+  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}</h2>
+    ${ctx.mode === 'insert' ? '<p style="font-size:var(--fs-base);color:var(--muted);margin:0">Người mới sẽ là con của đời trên và là cha/mẹ của người đang chọn. Số đời phía dưới tự tăng 1.</p>' : ''}
+    <form id="pf">
+    ${personFieldsHtml(d, otherSel)}
+    <div class="fbar"><button type="button" class="abtn" id="fcancel">Hủy</button><button class="abtn blue"><i class="fa-solid fa-check"></i>Lưu</button></div>
+    </form>`;
+  let dirty = false, photo = d.photo || '';
+  openSheet(html, { beforeClose: () => (dirty ? (confirmLeave(), false) : true) });
+  S.formOpen = true;
+  const sh = $('sheet');
+  sh.querySelectorAll('input,select,textarea').forEach((el) => el.addEventListener('input', () => (dirty = true)));
+  bindPersonFields(sh, d, (ph) => { photo = ph; dirty = true; });
   $('fcancel').onclick = () => closeSheet();
   function confirmLeave() {
     ask({ title: 'Bỏ thay đổi?', msg: 'Thông tin vừa nhập chưa được lưu.', ok: 'Bỏ', danger: true }).then((ok) => { if (ok) { dirty = false; closeSheet(true); back(); } });
@@ -666,15 +699,8 @@ function personForm(p, ctx) {
   $('pf').onsubmit = async (e) => {
     e.preventDefault();
     const v = (k) => ($('f_' + k) ? $('f_' + k).value.trim() : '');
-    const dead = $('f_dead').checked;
-    const data = {
-      name: v('name'), nick: v('nick'), alias: v('alias'), branch: v('branch'), gender: sh.querySelector('input[name=g]:checked').value,
-      order: Number(v('order')) || null, adopted: $('f_adopted').checked, birthSolar: v('birthSolar'), birthLunar: v('birthLunar'),
-      alive: !dead, deathSolar: dead ? v('deathSolar') : '', deathLunar: dead ? v('deathLunar') : '', burial: dead ? v('burial') : '',
-      birthPlace: v('birthPlace'), address: v('address'), job: v('job'), note: v('note'), photo,
-    };
-    for (const k of ['birthSolar', 'deathSolar', 'birthLunar', 'deathLunar']) if (!validDate(data[k])) { toast('Ngày tháng chưa hợp lệ'); $('f_' + k).focus(); return; }
-    if (data.birthLunar && !(fullDate(data.birthLunar) || yearOf(data.birthLunar))) { toast('Ngày sinh âm cần có năm'); return; }
+    const data = readPersonFields(sh, photo);
+    if (!data) return;
     // cảnh báo: con sinh trước cha mẹ
     const by = yearOf(data.birthSolar);
     const warn = [];
@@ -1007,6 +1033,7 @@ async function handleIncoming(text, person) {
   let u; try { u = new URL(text); } catch (e) { u = null; }
   const share = u && u.searchParams.get('share'), link = u ? u.searchParams.get('link') : text;
   if (share) return receiveShare(share);
+  if (u && u.searchParams.get('collect')) { location.href = u.href; return; }
   if (link) return linkWithCode(person || null, link);
   toast('Mã QR không phải link của app Gia phả', 4000);
 }
@@ -1053,9 +1080,9 @@ async function pushSettings() {
   let st;
   try { st = await D.pushStatus(); } catch (e) { st = { supported: false }; }
   const iosNotInstalled = isIOS && !standalone();
-  const days = st.days || [0, 3], kinds = st.kinds || ['gio', 'sn'];
+  const days = st.days || [0, 3], kinds = st.kinds || ['gio', 'sn', 'duyet'];
   $('sheet').innerHTML = `<div class="grab"></div><h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Thông báo</h2>
-    <p style="margin:0;color:var(--muted)">Mỗi sáng <b>7h</b>, app báo ngày giỗ, sinh nhật sắp tới của <b>mọi gia phả bạn xem được</b>, kể cả gia phả được chia sẻ.</p>
+    <p style="margin:0;color:var(--muted)">Mỗi sáng <b>7h</b>, app báo ngày giỗ, sinh nhật sắp tới của <b>mọi gia phả bạn xem được</b> (kể cả được chia sẻ), và nhắc <b>thông tin chờ duyệt</b> nếu bạn là biên tập / quản trị.</p>
     ${!st.supported || iosNotInstalled ? `<div class="panel" style="margin-top:12px"><div class="item" style="cursor:default"><div class="ic warn"><i class="fa-solid fa-triangle-exclamation"></i></div><div class="t"><b>${iosNotInstalled ? 'iPhone: cần cài app ra màn hình chính' : 'Trình duyệt này chưa hỗ trợ thông báo'}</b>
       <span>${iosNotInstalled ? 'Mở bằng Safari → Chia sẻ → Thêm vào MH chính, rồi mở app từ màn hình chính và bật thông báo (iOS 16.4 trở lên).' : 'Hãy dùng Chrome hoặc Edge (Android, máy tính), hoặc app đã cài trên iPhone.'}</span></div></div></div>` : ''}
     <div class="rows">
@@ -1064,14 +1091,14 @@ async function pushSettings() {
       <div class="cfgrow" style="align-items:flex-start"><div><b>Báo trước</b><small>Chọn một hoặc nhiều</small></div>
         <div class="ckcol">${PUSH_DAYS.map(([v, l]) => `<label class="ck"><input type="checkbox" name="pd" value="${v}" ${days.includes(v) ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
       <div class="cfgrow" style="align-items:flex-start"><div><b>Loại</b></div>
-        <div class="ckcol"><label class="ck"><input type="checkbox" name="pk" value="gio" ${kinds.includes('gio') ? 'checked' : ''}>Ngày giỗ</label><label class="ck"><input type="checkbox" name="pk" value="sn" ${kinds.includes('sn') ? 'checked' : ''}>Sinh nhật</label></div></div>
+        <div class="ckcol"><label class="ck"><input type="checkbox" name="pk" value="gio" ${kinds.includes('gio') ? 'checked' : ''}>Ngày giỗ</label><label class="ck"><input type="checkbox" name="pk" value="sn" ${kinds.includes('sn') ? 'checked' : ''}>Sinh nhật</label><label class="ck"><input type="checkbox" name="pk" value="duyet" ${kinds.includes('duyet') ? 'checked' : ''}>Thông tin chờ duyệt <small style="color:var(--muted)">(biên tập, quản trị)</small></label></div></div>
     </div>
     <div class="sacts"><button class="abtn blue" id="pushSave"><i class="fa-solid fa-check"></i>Lưu</button><button class="abtn" id="pushTest" ${st.supported && !iosNotInstalled ? '' : 'disabled'}><i class="fa-solid fa-bell"></i>Gửi thử</button></div>
     <p class="note">Mỗi máy (điện thoại, máy tính) bật riêng. Đổi tài khoản trên cùng máy thì thông báo theo tài khoản bật gần nhất.</p>`;
   const read = () => ({ days: [...$('sheet').querySelectorAll('input[name=pd]:checked')].map((x) => Number(x.value)), kinds: [...$('sheet').querySelectorAll('input[name=pk]:checked')].map((x) => x.value) });
   $('pushSave').onclick = async () => {
     const v = read(), on = $('pushOn').checked;
-    if (on && (!v.days.length || !v.kinds.length)) return toast('Chọn ít nhất 1 mốc báo trước và 1 loại');
+    if (on && !v.kinds.length) return toast('Chọn ít nhất 1 loại thông báo');
     busy('Đang lưu…');
     try { if (on) await D.enablePush(v); else await D.disablePush(); busy(); toast(on ? 'Đã bật thông báo – mỗi sáng 7h' : 'Đã tắt thông báo'); closeSheet(true); }
     catch (e) { busy(); toast(D.errMsg(e), 6000); }
@@ -1084,6 +1111,92 @@ async function pushSettings() {
       toast('Đã gửi thử – xem thông báo của máy');
     } catch (e) { toast(D.errMsg(e), 4000); }
   };
+}
+
+// ======================= Link nhờ điền thông tin 1 người (không cần tài khoản) =======================
+/** Biên tập: tạo link + QR nhờ người khác điền / bổ sung thông tin của p */
+async function collectLinkFor(p) {
+  const v = await ask({ title: 'Nhờ người khác điền thông tin', msg: `Gửi link cho người biết rõ về <b>${esc(pname(p))}</b> (con cháu, họ hàng…). Họ <b>không cần tài khoản</b>, mở link là sửa / bổ sung được. Thông tin gửi về chỉ vào gia phả sau khi bạn <b>duyệt</b> ở mục Đề xuất.`,
+    fields: [{ id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
+  if (!v) return;
+  busy('Đang tạo link…');
+  let code;
+  try { code = await D.createCollectLink(S.tree, p, Number(v.d)); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
+  busy();
+  showShareSheet({ title: 'Link nhờ điền thông tin', url: D.collectLinkUrl(code), expiresAt: Date.now() + Number(v.d) * 864e5,
+    text: `Nhờ bổ sung thông tin của "${pname(p)}" cho gia phả ${S.tree.name}`,
+    note: `Người nhận mở link, <b>không cần đăng nhập</b>, sửa / bổ sung thông tin của <b>${esc(pname(p))}</b>. Bạn duyệt ở mục <b>Đề xuất</b> rồi mới cập nhật vào gia phả.` });
+}
+
+/** Trang điền thông tin cho người mở link (không cần tài khoản) */
+async function renderCollect(code) {
+  $('app').hidden = true; $('gate').hidden = false;
+  $('gate').innerHTML = `<div class="gbox wide"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang mở…</div></div>`;
+  let L, mine;
+  try { ({ link: L, mine } = await D.openCollect(code)); }
+  catch (e) { $('gate').innerHTML = `<div class="gbox"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div><p class="gs">${esc(D.errMsg(e))}</p></div>`; return; }
+  const d = { gender: 'm', alive: true, ...(L.snap || {}), ...((mine && mine.data) || {}) };
+  let photo = d.photo || '';
+  $('gate').innerHTML = `<form class="gbox wide" id="cf" style="text-align:left">
+    <div style="text-align:center"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div>
+      <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(L.clanName || L.treeName)}</p></div>
+    <p class="gs" style="text-align:center">Nhờ bạn kiểm tra và bổ sung thông tin của <b style="color:var(--text)">${esc(L.name)}</b>. Không cần tài khoản. Người quản lý gia phả sẽ xem và duyệt.</p>
+    ${mine ? `<div class="panel" style="margin-bottom:10px"><div class="item" style="cursor:default"><div class="ic ok"><i class="fa-solid fa-check"></i></div><div class="t"><b>Bạn đã gửi trước đó</b><span>${mine.status === 'open' ? 'Đang chờ duyệt – có thể sửa và gửi lại' : 'Đã được xử lý'}</span></div></div></div>` : ''}
+    ${personFieldsHtml(d)}
+    <div class="fsec"><i class="fa-solid fa-user-pen"></i>Người gửi</div>
+    <div class="fgrid">
+      <div class="fld"><label>Tên và quan hệ *</label><input id="c_from" value="${esc((mine && mine.from) || '')}" placeholder="vd: Hoa – cháu nội" required maxlength="120"></div>
+      <div class="fld"><label>Số điện thoại</label><input id="c_phone" type="tel" value="${esc((mine && mine.phone) || '')}" maxlength="30"></div>
+    </div>
+    <button class="go" id="cGo" style="margin-top:14px" ${mine && mine.status !== 'open' ? 'disabled' : ''}><i class="fa-solid fa-paper-plane"></i><span>${mine ? 'Gửi lại' : 'Gửi thông tin'}</span></button>
+    <p class="note" style="text-align:center"><i class="fa-regular fa-clock"></i> Link hết hạn lúc ${esc(fmtTime(L.expiresAt))}</p>
+  </form>`;
+  bindPersonFields($('gate'), d, (ph) => { photo = ph; });
+  $('cf').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = readPersonFields($('gate'), photo);
+    if (!data) return;
+    busy('Đang gửi…');
+    try {
+      await D.submitCollect(L, data, $('c_from').value.trim(), $('c_phone').value.trim(), !!mine);
+      busy();
+      $('gate').innerHTML = `<div class="gbox"><div class="lock" style="background:var(--ok)"><i class="fa-solid fa-check"></i></div><div class="gt">Cảm ơn bạn!</div>
+        <p class="gs">Thông tin về <b>${esc(L.name)}</b> đã được gửi. Người quản lý gia phả <b>${esc(L.clanName || L.treeName)}</b> sẽ xem và duyệt.</p>
+        <button class="go" id="cAgain" style="background:var(--card-solid);color:var(--accent);border:1px solid var(--ring)"><i class="fa-solid fa-pen"></i>Sửa lại thông tin đã gửi</button></div>`;
+      $('cAgain').onclick = () => renderCollect(code);
+    } catch (er) { busy(); toast(D.errMsg(er), 5000); }
+  };
+}
+
+/** Mục Đề xuất: thông tin gửi về từ link nhờ điền → so sánh cũ / mới, chọn trường để áp dụng */
+const showVal = (k, v) => (v === undefined || v === null || v === '' ? '—' : k === 'gender' ? (v === 'f' ? 'Nữ' : 'Nam') : k === 'adopted' ? (v ? 'Có' : 'Không') : typeof v === 'boolean' ? (v ? 'Còn sống' : 'Đã mất') : String(v));
+const cellVal = (k, v) => (k === 'photo' ? (v ? `<img class="mini" src="${esc(v)}" alt="">` : '—') : esc(showVal(k, v)));
+function collectCards(list) {
+  return list.map((x) => {
+    const cur = byId(x.person) || {};
+    const ch = D.COLLECT_FIELDS.filter((k) => x.data[k] !== undefined && String(x.data[k] ?? '') !== String(cur[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : '')));
+    return `<div class="item" style="align-items:flex-start;cursor:default" data-cs="${esc(x.id)}"><div class="ic info"><i class="fa-solid fa-file-pen"></i></div>
+      <div class="t"><b>${esc(x.personName)}${byId(x.person) ? '' : ' (đã xóa khỏi cây)'}</b><span>Từ: ${esc(x.from)}${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</span>
+      ${ch.length ? `<div class="rows" style="margin-top:8px">${ch.map((k) => `<label class="r ck" style="gap:8px"><input type="checkbox" data-k="${k}" checked><span style="flex:0 0 auto;min-width:90px">${esc(LABEL[k] || k)}</span>
+        <b style="margin-left:0;text-align:left;font-weight:500"><s style="color:var(--muted)">${cellVal(k, cur[k])}</s> → <span style="color:var(--ok);font-weight:700">${cellVal(k, x.data[k])}</span></b></label>`).join('')}</div>`
+        : '<span style="margin-top:6px">Không có gì khác so với hiện tại</span>'}
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${ch.length && byId(x.person) ? `<button class="abtn sm blue" data-cok="${esc(x.id)}"><i class="fa-solid fa-check"></i>Áp dụng mục đã chọn</button>` : ''}
+        <button class="abtn sm red" data-cno="${esc(x.id)}">${ch.length ? 'Từ chối' : 'Đóng'}</button>${byId(x.person) ? `<button class="abtn sm" data-open="${esc(x.person)}"><i class="fa-solid fa-user"></i>Hồ sơ</button>` : ''}</div></div></div>`;
+  }).join('');
+}
+function bindCollectCards(m, list, rerender) {
+  m.querySelectorAll('[data-cok]').forEach((b) => (b.onclick = async () => {
+    const x = list.find((y) => y.id === b.dataset.cok), card = m.querySelector(`[data-cs="${CSS.escape(x.id)}"]`);
+    const keys = [...card.querySelectorAll('input[data-k]:checked')].map((i) => i.dataset.k);
+    if (!keys.length) return toast('Chọn ít nhất 1 mục để áp dụng');
+    const upd = { id: x.person }; keys.forEach((k) => (upd[k] = x.data[k]));
+    busy('Đang cập nhật…');
+    try { await D.saveChanges(S.tree.id, { updates: [upd] }, S.A.byId); await D.resolveCollect(x.id, 'done', keys); busy(); toast(`Đã cập nhật ${keys.length} mục vào gia phả`); rerender(); }
+    catch (e) { busy(); toast(D.errMsg(e), 4000); }
+  }));
+  m.querySelectorAll('[data-cno]').forEach((b) => (b.onclick = async () => {
+    try { await D.resolveCollect(b.dataset.cno, 'rejected'); toast('Đã đóng'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
+  }));
 }
 
 // ======================= Nhiều hơn (giống ech-client: header xanh + lưới chức năng theo nhóm) =======================
@@ -1317,17 +1430,18 @@ function userForm(u) {
 // ======================= Tab Đề xuất =======================
 async function renderProps(m) {
   m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
-  let list;
-  try { list = await D.listProposals(S.tree.id); } catch (e) { m.innerHTML = `<div class="page"><div class="empty">${esc(D.errMsg(e))}</div></div>`; return; }
+  let list, cl;
+  try { [list, cl] = await Promise.all([D.listProposals(S.tree.id), D.listCollectSubs(S.tree.id)]); } catch (e) { m.innerHTML = `<div class="page"><div class="empty">${esc(D.errMsg(e))}</div></div>`; return; }
   if (S.tab !== 'props') return;
-  S.propCount = list.length; setBadge();
-  m.innerHTML = `<div class="page"><div class="sec"><i class="fa-solid fa-inbox"></i> Đề xuất chờ xử lý <span class="n">${list.length}</span></div>
+  S.propCount = list.length + cl.length; setBadge();
+  m.innerHTML = `<div class="page">${cl.length ? `<div class="sec"><i class="fa-solid fa-file-pen"></i> Thông tin gửi từ link nhờ điền (chỉ vào gia phả khi bấm Áp dụng) <span class="n">${cl.length}</span></div><div class="panel">${collectCards(cl)}</div>` : ''}<div class="sec"><i class="fa-solid fa-inbox"></i> Đề xuất của thành viên <span class="n">${list.length}</span></div>
     <div class="panel">${list.length ? list.map((x) => `<div class="item" style="align-items:flex-start;cursor:default"><div class="ic info"><i class="fa-solid fa-message"></i></div>
       <div class="t"><b>${esc(x.personName || 'Chung')}</b><span style="white-space:pre-wrap;color:var(--text)">${esc(x.text)}</span><span>${esc(x.byName)} · ${esc(ago(x.at))}</span>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${x.personId && byId(x.personId) ? `<button class="abtn sm" data-open="${esc(x.personId)}"><i class="fa-solid fa-user"></i>Mở hồ sơ</button>` : ''}
         <button class="abtn sm blue" data-ok="${esc(x.id)}"><i class="fa-solid fa-check"></i>Đã sửa</button><button class="abtn sm red" data-no="${esc(x.id)}">Từ chối</button></div></div></div>`).join('')
       : '<div class="empty" style="padding:20px"><i class="fa-regular fa-circle-check"></i>Không có đề xuất nào</div>'}</div></div>`;
   m.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => showPerson(b.dataset.open)));
+  bindCollectCards(m, cl, () => renderProps(m));
   const res = (id, st) => D.resolveProposal(S.tree.id, id, st).then(() => { toast('Đã xử lý'); renderProps(m); }).catch((e) => toast(D.errMsg(e), 4000));
   m.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => res(b.dataset.ok, 'done')));
   m.querySelectorAll('[data-no]').forEach((b) => (b.onclick = () => res(b.dataset.no, 'rejected')));

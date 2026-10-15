@@ -5,14 +5,14 @@ import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/13.
 import {
   getAuth, initializeAuth, inMemoryPersistence, onAuthStateChanged, signOut, connectAuthEmulator,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword,
-  reauthenticateWithCredential, EmailAuthProvider,
+  reauthenticateWithCredential, EmailAuthProvider, signInAnonymously,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, CACHE_SIZE_UNLIMITED, connectFirestoreEmulator,
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792057291313';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792059039840';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -63,6 +63,7 @@ export function onUser(cb) {
   return onAuthStateChanged(auth, async (u) => {
     if (busyAuth) return;                // đang đăng ký: chờ ghi xong rồi tự gọi lại
     me = u; clan = null; account = null;
+    if (u && u.isAnonymous) { await signOut(auth); return; }   // phiên ẩn danh của link nhờ điền: không dùng cho app
     if (!u) return cb(null);
     try { await loadAccount(); cb(u); }
     catch (e) { await signOut(auth); cb(null, e); }
@@ -473,7 +474,7 @@ export async function pushStatus() {
   const sub = reg && (await reg.pushManager.getSubscription());
   let saved = null;
   if (sub) { try { const s = await getDoc(doc(db, 'pushSubs', await subId(sub.endpoint))); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* chưa có */ } }
-  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn'] };
+  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn', 'duyet'] };
 }
 export async function enablePush({ days, kinds }) {
   if (!pushSupported()) throw new Error('Trình duyệt này chưa hỗ trợ thông báo đẩy.');
@@ -509,3 +510,41 @@ export async function syncEvents(treeId, items) {
   await setDoc(doc(db, 'trees', treeId, 'meta', 'events'), { items, hash, updatedAt: serverTimestamp() });
   EVH.set(treeId, hash);
 }
+
+// ======================= Link nhờ điền thông tin 1 người (không cần tài khoản) =======================
+// Biên tập tạo link kèm bản chép thông tin hiện tại → người nhận (phiên ẩn danh) sửa / bổ sung và gửi →
+// biên tập duyệt ở mục Đề xuất, chọn trường áp dụng vào hồ sơ.
+export const COLLECT_FIELDS = ['name', 'nick', 'alias', 'gender', 'branch', 'order', 'adopted', 'birthSolar', 'birthLunar', 'alive', 'deathSolar', 'deathLunar', 'birthPlace', 'address', 'burial', 'job', 'note', 'photo'];
+export async function createCollectLink(tree, person, days = 7) {
+  const code = randomCode(), snap = {};
+  for (const k of COLLECT_FIELDS) if (person[k] !== undefined && person[k] !== null && person[k] !== '') snap[k] = person[k];
+  await setDoc(doc(db, 'collectLinks', code), { tree: tree.id, treeName: tree.name, clanName: clan.name || clan.code, person: person.id, name: person.name || 'Chưa rõ tên',
+    snap, by: me.uid, byName: myName(), createdAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + days * 864e5) });
+  return code;
+}
+export const collectLinkUrl = (code) => `${location.origin}${location.pathname}?collect=${encodeURIComponent(code)}`;
+/** Mở link nhờ điền: dùng phiên đang có hoặc phiên ẩn danh; trả về link + bản đã gửi trước đó (nếu có) */
+export async function openCollect(code) {
+  await auth.authStateReady();
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const s = await getDoc(doc(db, 'collectLinks', code));
+  if (!s.exists()) throw new Error('Link không tồn tại hoặc đã bị hủy.');
+  const link = { code, ...s.data() };
+  if (link.expiresAt.toMillis() < Date.now()) throw new Error('Link đã hết hạn. Hãy xin người quản lý gia phả gửi link mới.');
+  let mine = null;
+  try { const m = await getDoc(doc(db, 'collectSubs', `${code}_${auth.currentUser.uid}`)); if (m.exists()) mine = m.data(); } catch (e) { /* chưa gửi */ }
+  return { link, mine };
+}
+export async function submitCollect(link, all, from, phone, existed) {
+  const snap = link.snap || {}, data = {};
+  for (const k of COLLECT_FIELDS) { const a = all[k] ?? '', b = snap[k] ?? (k === 'alive' ? true : k === 'gender' ? 'm' : k === 'adopted' ? false : ''); if (String(a) !== String(b)) data[k] = all[k]; }
+  const ref = doc(db, 'collectSubs', `${link.code}_${auth.currentUser.uid}`);
+  if (existed) await updateDoc(ref, { data, from, phone, at: serverTimestamp() });
+  else await setDoc(ref, { code: link.code, uid: auth.currentUser.uid, tree: link.tree, person: link.person, personName: link.name, data, from, phone, status: 'open', at: serverTimestamp() });
+}
+export async function listCollectSubs(treeId) {
+  const s = await getDocs(query(collection(db, 'collectSubs'), where('tree', '==', treeId), where('status', '==', 'open')));
+  return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+}
+export const resolveCollect = (id, status, applied = []) =>
+  updateDoc(doc(db, 'collectSubs', id), { status, applied, resolvedBy: me.uid, resolvedByName: myName(), resolvedAt: serverTimestamp() });
