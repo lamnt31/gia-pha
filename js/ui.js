@@ -28,13 +28,15 @@ export function ask({ title, msg, fields = [], ok = 'OK', danger, validate }) {
   return new Promise((resolve) => {
     $('modal').innerHTML = `<form class="mbox" id="mform"><h3>${esc(title)}</h3>${msg ? `<p>${msg}</p>` : ''}
       ${fields.map((f) => f.type === 'select'
-        ? `<div class="fld"><select id="m_${f.id}">${f.options.map((o) => `<option value="${esc(o[0])}" ${o[0] === f.value ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select></div>`
+        ? `<div class="fld"><select id="m_${f.id}" aria-label="${esc(f.ph || title)}">${f.options.map((o) => `<option value="${esc(o[0])}" ${o[0] === f.value ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select></div>`
         : `<div class="fld"><input id="m_${f.id}" type="${f.type || 'text'}" placeholder="${esc(f.ph || '')}" value="${esc(f.value || '')}" autocomplete="off"></div>`).join('')}
       <div class="merr" id="merr"></div>
       <div class="macts"><button type="button" class="abtn" id="mcancel">Hủy</button><button class="abtn ${danger ? 'red' : 'blue'}">${esc(ok)}</button></div></form>`;
+    $('mform').insertAdjacentHTML('afterbegin', '<div class="grab"></div>');
     $('modal').hidden = false;
-    const done = (v) => { $('modal').hidden = true; $('modal').innerHTML = ''; resolve(v); };
+    const done = (v) => { $('modal').hidden = true; $('modal').innerHTML = ''; $('modal').onclick = null; resolve(v); };
     $('mcancel').onclick = () => done(null);
+    $('modal').onclick = (e) => { if (e.target === $('modal')) done(null); };   // chạm nền tối = Hủy
     $('mform').onsubmit = (e) => {
       e.preventDefault();
       const v = {}; fields.forEach((f) => (v[f.id] = $('m_' + f.id).value.trim()));
@@ -42,8 +44,56 @@ export function ask({ title, msg, fields = [], ok = 'OK', danger, validate }) {
       if (err) { $('merr').textContent = err; return; }
       done(fields.length ? v : true);
     };
-    setTimeout(() => { const f = $('modal').querySelector('input,select'); if (f) f.focus(); }, 50);
+    setTimeout(() => { const f = $('modal').querySelector('input'); if (f) f.focus(); }, 50);
   });
+}
+
+// ---------- Chọn giá trị: thay mọi <select> bằng nút mở danh sách dạng popup trượt lên (giống form Thêm người)
+let PICK = null;
+/** pick({title, options:[[value, label]], value}) → Promise<value | null> */
+export function pick({ title = 'Chọn', options, value }) {
+  return new Promise((resolve) => {
+    let el = $('picker');
+    if (!el) { el = document.createElement('div'); el.id = 'picker'; el.className = 'modal picker'; document.body.appendChild(el); }
+    const many = options.length > 8;
+    el.innerHTML = `<div class="mbox"><div class="grab"></div><h3>${esc(title)}</h3>
+      ${many ? '<div class="search pks"><i class="fa-solid fa-magnifying-glass"></i><input id="pkq" placeholder="Tìm…" autocomplete="off"></div>' : ''}
+      <div class="pklist">${options.map(([v, l]) => `<button type="button" class="pkopt ${String(v) === String(value) ? 'on' : ''}" data-v="${esc(v)}"><span>${esc(l)}</span>${String(v) === String(value) ? '<i class="fa-solid fa-check"></i>' : ''}</button>`).join('')}</div>
+      <div class="macts one"><button type="button" class="abtn" id="pkx">Đóng</button></div></div>`;
+    el.hidden = false;
+    const done = (v) => { el.hidden = true; el.innerHTML = ''; PICK = null; resolve(v); };
+    PICK = () => done(null);
+    el.onclick = (e) => { if (e.target === el) done(null); };
+    $('pkx').onclick = () => done(null);
+    el.querySelectorAll('.pkopt').forEach((b) => (b.onclick = () => done(b.dataset.v)));
+    if (many) { const q = $('pkq'); q.oninput = () => { const t = fold(q.value); el.querySelectorAll('.pkopt').forEach((b) => (b.hidden = !!t && !fold(b.textContent).includes(t))); }; }
+    const on = el.querySelector('.pkopt.on'); if (on) on.scrollIntoView({ block: 'center' });
+  });
+}
+function enhanceSelect(s) {
+  if (s.dataset.enh || s.multiple || s.dataset.native !== undefined) return;
+  s.dataset.enh = '1';
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = (s.className ? s.className + ' ' : '') + 'selbtn';
+  if (s.id) b.dataset.for = s.id;
+  const label = () => { const o = s.options[s.selectedIndex]; b.innerHTML = `<span>${esc(o ? o.text : '')}</span><i class="fa-solid fa-chevron-down"></i>`; b.disabled = s.disabled; };
+  label();
+  s.classList.add('selhide'); s.tabIndex = -1;
+  s.after(b);
+  s.addEventListener('change', label);
+  b.onclick = async () => {
+    const fld = s.closest('.fld'), lb = fld && fld.querySelector('label');
+    const v = await pick({ title: (lb && lb.textContent) || s.getAttribute('aria-label') || s.title || 'Chọn', options: [...s.options].map((o) => [o.value, o.text]), value: s.value });
+    if (v === null || v === s.value) return;
+    s.value = v; label();
+    s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+}
+/** Tự thay mọi <select> xuất hiện trên trang (form, hộp thoại, bộ lọc) */
+export function initPickers() {
+  document.querySelectorAll('select').forEach(enhanceSelect);
+  new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) (n.tagName === 'SELECT' ? [n] : n.querySelectorAll('select')).forEach(enhanceSelect); })
+    .observe(document.body, { childList: true, subtree: true });
 }
 
 // ---------- Khóa cuộn trang phía sau khi mở popup (iOS cần position:fixed)
@@ -122,7 +172,12 @@ export function initSheet() {
     el.addEventListener('touchcancel', () => { if (SW.drag) { SW.drag = false; SW.half ? sheetHalf() : sheetFull(); } });
   }
   $('sheetBg').onclick = () => closeSheet();
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('modal').hidden && sheetOpen()) closeSheet(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (PICK) return PICK();
+    if (!$('modal').hidden) return $('mcancel') && $('mcancel').click();
+    if (sheetOpen()) closeSheet();
+  });
 }
 
 // ---------- Ảnh chân dung: cắt vuông + nén nhỏ (giống cách nén ảnh thẻ)

@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, fileToAvatar } from './ui.js?v=1792045923739';
-import * as D from './data.js?v=1792045923739';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792045923739';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792045923739';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792046497072';
+import * as D from './data.js?v=1792046497072';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792046497072';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792046497072';
 
-const APP_VER = '15/10 13:32';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 13:41';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -79,6 +79,7 @@ const pname = (p) => (p && p.name) || 'Chưa rõ tên';
 // ======================= Khởi động =======================
 applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
+initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
 
 D.onUser(async (u, err) => {
   if (!u) {
@@ -408,7 +409,7 @@ function showPerson(id, refresh) {
       ${row('fa-monument', 'An táng', esc(p.burial))}
       ${row('fa-briefcase', 'Nghề nghiệp', esc(p.job))}
     </div>
-    ${p.note ? `<div class="fsec"><i class="fa-regular fa-note-sticky"></i>Ghi chú</div><div style="white-space:pre-wrap;font-size:14px;margin-top:6px">${esc(p.note)}</div>` : ''}
+    ${p.note ? `<div class="fsec"><i class="fa-regular fa-note-sticky"></i>Ghi chú</div><div style="white-space:pre-wrap;font-size:var(--fs-md);margin-top:6px">${esc(p.note)}</div>` : ''}
     <div class="fsec"><i class="fa-solid fa-people-roof"></i>Quan hệ</div>
     <div class="rows">
       <div class="r"><span>Cha</span><b class="rel">${f ? relBtns([f]) : '—'}</b></div>
@@ -426,7 +427,7 @@ function showPerson(id, refresh) {
       ${isOwner() && S.tree.anchorId !== id ? '<button class="abtn" data-a="anchor"><i class="fa-solid fa-flag"></i>Đặt làm đời 1</button>' : ''}
       <button class="abtn red ${isOwner() && S.tree.anchorId !== id ? '' : 'full'}" data-a="del"><i class="fa-solid fa-trash"></i>Xóa</button>
     </div>` : `<div class="sacts"><button class="abtn blue full" data-a="propose"><i class="fa-solid fa-paper-plane"></i>Đề xuất sửa thông tin</button></div>`}
-    <p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center">Cập nhật ${esc(ago(p.updatedAt))}</p>`;
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin-top:14px;text-align:center">Cập nhật ${esc(ago(p.updatedAt))}</p>`;
   if (refresh) { const sc = $('sheet').scrollTop; $('sheet').innerHTML = `<div class="grab"></div>${html}`; $('sheet').scrollTop = sc; }
   else openSheet(html);
   const sh = $('sheet');
@@ -478,8 +479,8 @@ function personForm(p, ctx) {
     const sp = (of.spouseIds || []).map(byId).filter(Boolean);
     otherSel = `<div class="fld full"><label>${of.gender === 'f' ? 'Cha' : 'Mẹ'}</label><select id="f_other"><option value="">— Chưa rõ —</option>${sp.map((s, i) => `<option value="${esc(s.id)}" ${i === 0 ? 'selected' : ''}>${esc(pname(s))}</option>`).join('')}</select></div>`;
   }
-  const html = `<h2 style="margin:0 0 4px;font-size:19px">${esc(title)}</h2>
-    ${ctx.mode === 'insert' ? '<p style="font-size:13px;color:var(--muted);margin:0">Người mới sẽ là con của đời trên và là cha/mẹ của người đang chọn. Số đời phía dưới tự tăng 1.</p>' : ''}
+  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}</h2>
+    ${ctx.mode === 'insert' ? '<p style="font-size:var(--fs-base);color:var(--muted);margin:0">Người mới sẽ là con của đời trên và là cha/mẹ của người đang chọn. Số đời phía dưới tự tăng 1.</p>' : ''}
     <form id="pf">
     <div class="phw"><div class="ph ${d.gender === 'f' ? 'f' : 'm'}" id="fph">${d.photo ? `<img src="${esc(d.photo)}">` : '<i class="fa-solid fa-camera"></i>'}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="abtn sm" id="fphb"><i class="fa-solid fa-image"></i>Chọn ảnh</button>${d.photo ? '<button type="button" class="abtn sm red" id="fphx">Bỏ ảnh</button>' : ''}</div></div>
@@ -670,7 +671,7 @@ function renderList(m) {
       <div style="display:flex;gap:8px"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="lq" placeholder="Tìm tên (gõ không dấu cũng được)" value="${esc(S.q)}" autocomplete="off"><button class="clr" id="lqx" ${S.q ? '' : 'hidden'}><i class="fa-solid fa-xmark"></i></button></div>
         <button class="ibtn" id="csv" title="Xuất Excel (CSV)"><i class="fa-solid fa-file-excel"></i></button>${canEdit() ? '<button class="ibtn" id="ladd" title="Thêm người"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div>
       <div class="filters">${[['all', 'Tất cả'], ['alive', 'Còn sống'], ['dead', 'Đã mất'], ['m', 'Nam'], ['f', 'Nữ'], ['loose', 'Chưa nối']].map(([k, n]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
-        <select class="chip" id="lgen"><option value="">Mọi đời</option>${gens.map((g) => `<option value="${g}" ${String(S.gen) === String(g) ? 'selected' : ''}>${esc(g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g))}</option>`).join('')}</select></div>
+        <select class="chip" id="lgen" aria-label="Lọc theo đời"><option value="">Mọi đời</option>${gens.map((g) => `<option value="${g}" ${String(S.gen) === String(g) ? 'selected' : ''}>${esc(g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g))}</option>`).join('')}</select></div>
     </div>
     <div class="panel" id="lres"></div></div>`;
   const draw = () => {
@@ -831,7 +832,7 @@ async function renderUsers(m) {
 
 function userForm(u) {
   const isNew = !u, d = u || { active: true, trees: {} }, trees = D.clan.trees || {};
-  const html = `<h2 style="margin:0 0 4px;font-size:19px">${isNew ? 'Thêm người dùng' : 'Sửa người dùng'}</h2>
+  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${isNew ? 'Thêm người dùng' : 'Sửa người dùng'}</h2>
     <form id="uf">
     <div class="fsec"><i class="fa-solid fa-id-card"></i>Thông tin</div>
     <div class="fgrid">
@@ -846,7 +847,7 @@ function userForm(u) {
       <label class="ck full"><input type="checkbox" id="u_active" ${d.active !== false ? 'checked' : ''}>Hoạt động (bỏ chọn để tắt tài khoản, gỡ mọi quyền)</label>`}
     </div>
     <div class="fsec"><i class="fa-solid fa-shield-halved"></i>Quyền theo gia phả</div>
-    <div class="rows">${Object.entries(trees).map(([t, n]) => `<div class="r"><span style="color:var(--text);flex:1">${esc(n)}</span><select class="rsel" data-tr="${esc(t)}">${Object.entries(TROLE).map(([k, l]) => `<option value="${k}" ${(d.trees || {})[t] === k || (!k && !(d.trees || {})[t]) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')
+    <div class="rows">${Object.entries(trees).map(([t, n]) => `<div class="r"><span style="color:var(--text);flex:1">${esc(n)}</span><select class="rsel" data-tr="${esc(t)}" aria-label="Quyền trên: ${esc(n)}">${Object.entries(TROLE).map(([k, l]) => `<option value="${k}" ${(d.trees || {})[t] === k || (!k && !(d.trees || {})[t]) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')
       || '<div class="r"><span>Chưa có gia phả nào</span></div>'}</div>
     <div class="fbar"><button type="button" class="abtn" id="ucancel">Hủy</button><button class="abtn blue"><i class="fa-solid fa-check"></i>${isNew ? 'Tạo' : 'Lưu'}</button></div>
     </form>`;
