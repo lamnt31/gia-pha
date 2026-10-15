@@ -318,6 +318,18 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .scanbox { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 1; max-width: 360px; margin: 0 auto; }
   .scanbox video { width: 100%; height: 100%; object-fit: cover; }
   .scanframe { position: absolute; inset: 18%; border: 3px solid #fff; border-radius: 16px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
+  /* máy quét QR toàn màn hình, ô quét ở chính giữa màn hình */
+  .sheet.tall { inset: 0; top: 0; left: 0; right: 0; bottom: 0; width: auto; max-width: none; max-height: none; height: 100vh; height: 100dvh; margin: 0;
+                border-radius: 0; padding: 0; background: #000; overflow: hidden; transform: none; }
+  .sheet.tall .grab { display: none; }
+  .scanfull { position: absolute; inset: 0; }
+  .scanfull video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .scanfull .scanframe { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(70vw, 55vh, 340px); aspect-ratio: 1;
+                         border: 3px solid #fff; border-radius: 18px; box-shadow: 0 0 0 200vmax rgba(0,0,0,.5); }
+  .scantop { position: absolute; left: 0; right: 0; top: 0; padding: calc(18px + env(safe-area-inset-top)) 16px 12px; text-align: center; color: #fff; }
+  .scantop b { display: block; font-size: var(--fs-xl); } .scantop small { opacity: .85; }
+  .scanclose { position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); transform: translateX(-50%); height: 44px; padding: 0 22px;
+               border-radius: 99px; border: 0; background: rgba(255,255,255,.92); color: #111; font: inherit; font-weight: 700; cursor: pointer; }
   .tog circle { fill: var(--card-solid); stroke: var(--link); stroke-width: 1.5; }
   .tog text { font-size: 11px; font-weight: 700; fill: var(--text); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
@@ -362,6 +374,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792055952378"></script>
+<script type="module" src="js/app.js?v=1792056636197"></script>
 </body>
 </html>

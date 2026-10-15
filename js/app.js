@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792055952378';
-import * as D from './data.js?v=1792055952378';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792055952378';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792055952378';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792056636197';
+import * as D from './data.js?v=1792056636197';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792056636197';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792056636197';
 
-const APP_VER = '15/10 16:19';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 16:30';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -275,8 +275,8 @@ function shell() {
   const tab = (x, cls) => `<button class="${cls} ${S.tab === x.k ? 'on' : ''}" data-tab="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span>${x.k === 'props' ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}</button>`;
   $('app').innerHTML = `
     <div class="top">
-      <button class="tsw" id="treeSw" ${tr.length > 1 ? '' : 'disabled'}><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
-        <small id="tsub">${esc(S.tree ? `${ROLE[S.role]} · ${S.persons.length} người` : D.clan.name || '')}</small>${tr.length > 1 ? '<i class="fa-solid fa-chevron-down"></i>' : ''}</button>
+      <button class="tsw" id="treeSw"><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
+        <small id="tsub">${esc(S.tree ? `${ROLE[S.role]} · ${S.persons.length} người` : D.clan.name || '')}</small><i class="fa-solid fa-chevron-down"></i></button>
       <button class="ibtn" id="scanBtn" title="Quét mã QR (nhận chia sẻ / liên kết)"><i class="fa-solid fa-qrcode"></i></button>
       <button class="ibtn" id="themeBtn"></button>
     </div>
@@ -303,14 +303,15 @@ function setBadge() { document.querySelectorAll('[data-badge]').forEach((b) => {
 
 async function switchTree() {
   const tr = D.myTrees();
-  const opts = tr.map((t) => [t.id, t.shared ? `${t.name} · ${t.clanName} (được chia sẻ)` : `${t.name} · ${ROLE[t.role]}`]);
+  const opts = tr.map((t) => [t.id, t.shared ? `${t.name}${t.clanName && t.clanName !== t.name ? " · " + t.clanName : ""} (được chia sẻ)` : `${t.name} · ${ROLE[t.role]}`]);
   if (D.isRoot() && (D.clan.treeCount || 0) < D.LIMIT_TREES) opts.push(['__new', '+ Tạo gia phả mới']);
   opts.push(['__scan', '+ Nhận gia phả được chia sẻ (quét QR)']);
-  const v = await ask({ title: 'Chọn gia phả', fields: [{ id: 't', type: 'select', value: S.tree ? S.tree.id : '', options: opts }], ok: 'Mở' });
-  if (!v) return;
-  if (v.t === '__new') return newTree();
-  if (v.t === '__scan') return scanAndHandle();
-  if (!S.tree || v.t !== S.tree.id) openTree(v.t);
+  // bấm là chọn luôn (danh sách trượt lên), không qua ô select
+  const t = await pick({ title: 'Chọn gia phả', options: opts, value: S.tree ? S.tree.id : '' });
+  if (!t) return;
+  if (t === '__new') return newTree();
+  if (t === '__scan') return scanAndHandle();
+  if (!S.tree || t !== S.tree.id) openTree(t);
 }
 
 async function newTree() {
@@ -974,12 +975,13 @@ async function showShareSheet({ title, url, text, note, expiresAt }) {
 /** Quét mã QR bằng camera → trả về chuỗi trong mã (thường là link) */
 function scanQR() {
   return new Promise((resolve) => {
-    openSheet(`<h2 style="margin:0 0 8px;font-size:var(--fs-2xl)">Quét mã QR</h2>
-      <div class="scanbox"><video id="qrv" playsinline muted></video><div class="scanframe"></div></div>
-      <p class="note" id="qrMsg" style="text-align:center">Đưa mã QR vào khung</p>
-      <div class="sacts"><button class="abtn full" id="qrStop">Đóng</button></div>`, { beforeClose: () => { stop(); return true; } });
+    // toàn màn hình: camera phủ kín, ô quét nằm đúng giữa màn hình; tiêu đề và nút Đóng nổi phía trên / dưới
+    openSheet(`<div class="scanfull"><video id="qrv" playsinline muted></video><div class="scanframe"></div>
+      <div class="scantop"><b>Quét mã QR</b><small id="qrMsg">Đưa mã QR vào giữa khung</small></div>
+      <button class="scanclose" id="qrStop"><i class="fa-solid fa-xmark"></i> Đóng</button></div>`, { beforeClose: () => { stop(); return true; } });
+    $('sheet').classList.add('tall');
     let stream = null, timer = null, done = false;
-    const stop = () => { done = true; clearTimeout(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); };
+    const stop = () => { done = true; clearTimeout(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); $('sheet').classList.remove('tall'); };
     const finish = (v) => { if (done) return; stop(); closeSheet(true); resolve(v); };
     $('qrStop').onclick = () => finish(null);
     (async () => {
