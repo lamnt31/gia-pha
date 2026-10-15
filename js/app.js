@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792047029384';
-import * as D from './data.js?v=1792047029384';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792047029384';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792047029384';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, fileToAvatar } from './ui.js?v=1792047431474';
+import * as D from './data.js?v=1792047431474';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792047431474';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792047431474';
 
-const APP_VER = '15/10 13:50';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '15/10 13:57';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -59,6 +59,28 @@ function maskDate(el, e) {
   }
   if (out !== raw) el.value = out;
 }
+/**
+ * Sinh nhật tới của người còn sống: theo ngày sinh dương; nếu chỉ có ngày sinh âm thì theo âm lịch.
+ * 29/2 năm không nhuận → 28/2. Trả về { solar:[d,m,y], daysLeft, age, lunar, tho } | null
+ */
+function nextBirthday(p, today = new Date()) {
+  if (isDead(p)) return null;
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const s = fullDate(p.birthSolar);
+  if (s) {
+    for (const y of [t0.getFullYear(), t0.getFullYear() + 1]) {
+      const d = s[0] === 29 && s[1] === 2 && new Date(y, 1, 29).getMonth() !== 1 ? 28 : s[0];
+      const dt = new Date(y, s[1] - 1, d);
+      if (dt >= t0) { const age = y - s[2]; return { solar: [d, s[1], y], daysLeft: Math.round((dt - t0) / 864e5), age, lunar: false, tho: age >= 60 && age % 10 === 0 }; }
+    }
+  }
+  const l = fullDate(p.birthLunar);
+  if (l) {
+    const n = nextDeathAnniversary(l[0], l[1], today);   // cùng quy tắc đổi ngày âm năm nay ra dương
+    if (n) { const age = n.lunarYear - l[2]; return { solar: n.solar, daysLeft: n.daysLeft, age, lunar: true, tho: age >= 60 && age % 10 === 0 }; }
+  }
+  return null;
+}
 const isDead = (p) => p.alive === false || !!(p.deathSolar || p.deathLunar);
 const fmtD = (a) => `${String(a[0]).padStart(2, '0')}/${String(a[1]).padStart(2, '0')}/${a[2]}`;
 function lifeText(p) {
@@ -97,8 +119,9 @@ D.onUser(async (u, err) => {
 const INST = { deferred: null };
 const standalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-// giống app Thẻ: chỉ hiện nút khi trình duyệt báo cài được (beforeinstallprompt) hoặc là iPhone/iPad
-const canInstall = () => !standalone() && (!!INST.deferred || isIOS);
+const isAndroid = /Android/i.test(navigator.userAgent);
+// Nút luôn hiện khi chưa cài. Trình duyệt đã sẵn sàng (beforeinstallprompt) → hộp cài đặt; chưa → hướng dẫn đúng loại máy
+const canInstall = () => !standalone();
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); INST.deferred = e; document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = false)); });
 addEventListener('appinstalled', () => { INST.deferred = null; document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true)); toast('Đã cài ứng dụng'); });
 function bindInstall(root) { root.querySelectorAll('[data-install]').forEach((b) => (b.onclick = doInstall)); }
@@ -106,12 +129,17 @@ async function doInstall() {
   if (INST.deferred) {   // Android / Chrome / Edge: hiện hộp cài đặt của trình duyệt
     INST.deferred.prompt();
     const c = await INST.deferred.userChoice; INST.deferred = null;
-    // đã cài hoặc bấm Hủy: ẩn nút; trình duyệt sẽ báo lại (beforeinstallprompt) khi cài được tiếp
-    if (c.outcome === 'accepted' || !canInstall()) document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true));
+    if (c.outcome === 'accepted') document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true));
     return;
   }
-  // iPhone / iPad: Safari không có hộp cài đặt → hướng dẫn thêm vào màn hình chính
-  const msg = '1. Mở trang này bằng <b>Safari</b><br>2. Bấm nút <b>Chia sẻ</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ở thanh dưới<br>3. Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>';
+  // Trình duyệt chưa sẵn sàng hiện hộp cài (Chrome/Edge máy tính cần bấm vào trang và xem ~30 giây) → hướng dẫn theo loại máy
+  const msg = isIOS
+    ? '1. Mở trang này bằng <b>Safari</b><br>2. Bấm nút <b>Chia sẻ</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ở thanh dưới<br>3. Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>'
+    : isAndroid
+      ? '1. Bấm nút menu <b>⋮</b> góc trên bên phải của Chrome<br>2. Chọn <b>Cài đặt ứng dụng</b> (hoặc <b>Thêm vào màn hình chính</b>)<br>3. Bấm <b>Cài đặt</b>'
+      : '<b>Cách 1:</b> bấm biểu tượng <b>Cài đặt ứng dụng</b> <i class="fa-solid fa-display"></i> ở cuối thanh địa chỉ (bên phải ô nhập link).<br><br>'
+        + '<b>Cách 2:</b><br>• <b>Edge:</b> menu <b>⋯</b> → <b>Ứng dụng</b> → <b>Cài đặt trang web này dưới dạng ứng dụng</b><br>'
+        + '• <b>Chrome:</b> menu <b>⋮</b> → <b>Truyền, lưu và chia sẻ</b> → <b>Cài đặt trang dưới dạng ứng dụng</b>';
   await ask({ title: 'Cài "Gia phả" lên máy', msg, ok: 'Đã hiểu' });
 }
 
@@ -195,7 +223,7 @@ const NAV = [
   { k: 'home', ic: 'fa-chart-pie', n: 'Tổng quan', ok: () => true },
   { k: 'tree', ic: 'fa-sitemap', n: 'Cây', ok: () => !!S.tree },
   { k: 'list', ic: 'fa-list', n: 'Danh sách', ok: () => !!S.tree },
-  { k: 'gio', ic: 'fa-fire-flame-curved', n: 'Ngày giỗ', ok: () => !!S.tree },
+  { k: 'gio', ic: 'fa-calendar-days', n: 'Lịch', ok: () => !!S.tree },
   { k: 'props', ic: 'fa-inbox', n: 'Đề xuất', ok: () => !!S.tree && canEdit(), g: 'Gia phả' },
   { k: 'log', ic: 'fa-clock-rotate-left', n: 'Nhật ký', ok: () => !!S.tree, g: 'Gia phả' },
   { k: 'users', ic: 'fa-users-gear', n: 'Người dùng', ok: () => D.isRoot(), g: 'Quản trị' },
@@ -303,7 +331,8 @@ function renderHome(m) {
   }
   const P = S.persons, ready = !!S.A;
   const gens = ready ? new Set(P.map((p) => S.A.shown(p.id)).filter((g) => g !== null && g >= 1)).size : 0;
-  const gio = ready ? P.filter(isDead).map((p) => { const g = gioOf(p); return g && { p, g, n: nextDeathAnniversary(g[0], g[1]) }; }).filter((x) => x && x.n && x.n.daysLeft <= 30).sort((a, b) => a.n.daysLeft - b.n.daysLeft) : [];
+  const U = ready ? upcoming() : { gio: [], sn: [] };
+  const gio = [...U.gio, ...U.sn].filter((x) => x.n.daysLeft <= 30).sort((a, b) => a.n.daysLeft - b.n.daysLeft);
   const today = new Date(), tl = solarToLunar(today.getDate(), today.getMonth() + 1, today.getFullYear());
   m.innerHTML = `<div class="page">
     <div class="hello"><div><small>Hôm nay ${fmtD([today.getDate(), today.getMonth() + 1, today.getFullYear()])}</small><b>Âm lịch ${formatLunar(tl)}</b></div><i class="fa-solid fa-moon"></i></div>
@@ -314,10 +343,9 @@ function renderHome(m) {
       <div class="stat"><div class="k"><i class="fa-solid fa-dove"></i> Đã mất</div><div class="v">${P.filter(isDead).length}</div></div>
     </div>
     ${S.propCount && canEdit() ? `<div class="panel" style="margin-top:14px"><div class="item" data-go="props"><div class="ic warn"><i class="fa-solid fa-inbox"></i></div><div class="t"><b>${S.propCount} đề xuất chờ xử lý</b><span>Thành viên gửi thông tin cần sửa</span></div><i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i></div></div>` : ''}
-    <div class="sec"><i class="fa-solid fa-bell"></i> Giỗ 30 ngày tới <span class="n">${gio.length}</span></div>
-    <div class="panel">${gio.length ? gio.slice(0, 8).map((x) => `<div class="item" data-p="${esc(x.p.id)}">${avatar(x.p)}<div class="t"><b>${esc(pname(x.p))}</b><span>Giỗ ${x.g[0]}/${x.g[1]} âm · ${fmtD(x.n.solar)}</span></div>
-      <span class="when ${x.n.daysLeft <= 3 ? 'bad' : x.n.daysLeft <= 14 ? 'warn' : 'ok'}">${x.n.daysLeft ? x.n.daysLeft + ' ngày' : 'Hôm nay'}</span></div>`).join('')
-      : `<div class="empty" style="padding:20px">${ready ? 'Không có ngày giỗ nào trong 30 ngày tới' : '<i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…'}</div>`}</div>
+    <div class="sec"><i class="fa-solid fa-bell"></i> Giỗ, sinh nhật 30 ngày tới <span class="n">${gio.length}</span></div>
+    <div class="panel">${gio.length ? gio.slice(0, 10).map(eventItem).join('')
+      : `<div class="empty" style="padding:20px">${ready ? 'Không có ngày giỗ, sinh nhật nào trong 30 ngày tới' : '<i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…'}</div>`}</div>
     <div class="sec"><i class="fa-solid fa-bolt"></i> Truy cập nhanh</div>
     <div class="qgrid">
       <button data-go="tree"><i class="fa-solid fa-sitemap"></i>Xem cây</button>
@@ -404,6 +432,7 @@ function showPerson(id, refresh) {
       ${row('fa-venus-mars', 'Giới tính', p.gender === 'f' ? 'Nữ' : 'Nam')}
       ${row('fa-cake-candles', 'Sinh', p.birthSolar || p.birthLunar ? `${esc(p.birthSolar || '')}${bl ? `<small>Âm lịch: ${formatLunar(bl)}</small>` : p.birthLunar ? `<small>Âm lịch: ${esc(p.birthLunar)}</small>` : ''}` : '')}
       ${isDead(p) ? row('fa-dove', 'Mất', `${esc(p.deathSolar || '') || (p.deathLunar ? '' : 'Đã mất')}${dl ? `<small>Âm lịch: ${formatLunar(dl)}</small>` : p.deathLunar ? `<small>Âm lịch: ${esc(p.deathLunar)}</small>` : ''}`) : ''}
+      ${(() => { const b = nextBirthday(p); return b ? row('fa-gift', 'Sinh nhật', `${fmtD(b.solar)}${b.lunar ? ' (âm lịch)' : ''}<small>${b.daysLeft ? 'còn ' + b.daysLeft + ' ngày' : 'hôm nay'} · tròn ${b.age} tuổi${b.tho ? ' · mừng thọ' : ''}</small>`) : ''; })()}
       ${next ? row('fa-fire-flame-curved', 'Giỗ', `${gio[0]}/${gio[1]} âm lịch<small>Năm nay: ${fmtD(next.solar)} · ${next.daysLeft ? `còn ${next.daysLeft} ngày` : 'hôm nay'}</small>`) : ''}
       ${row('fa-location-dot', 'Nơi sinh', esc(p.birthPlace))}
       ${row('fa-house', 'Nơi ở', esc(p.address))}
@@ -715,21 +744,39 @@ function exportCsv() {
 }
 
 // ======================= Tab Ngày giỗ =======================
+const whenCls = (n) => (n <= 3 ? 'bad' : n <= 14 ? 'warn' : 'ok');
+const whenTxt = (n) => (n ? n + ' ngày' : 'Hôm nay');
+/** Danh sách sự kiện sắp tới: giỗ (người đã mất) + sinh nhật (người còn sống) */
+function upcoming(today = new Date()) {
+  const gio = S.persons.filter(isDead).map((p) => { const g = gioOf(p); const n = g && nextDeathAnniversary(g[0], g[1], today); return n && { p, kind: 'gio', g, n }; }).filter(Boolean);
+  const sn = S.persons.map((p) => { const n = nextBirthday(p, today); return n && { p, kind: 'sn', n }; }).filter(Boolean);
+  return { gio: gio.sort((a, b) => a.n.daysLeft - b.n.daysLeft), sn: sn.sort((a, b) => a.n.daysLeft - b.n.daysLeft) };
+}
+function eventItem(x) {
+  const sub = x.kind === 'gio'
+    ? `Giỗ ${x.g[0]}/${x.g[1]} âm · ${fmtD(x.n.solar)} · ${esc(S.A.label(x.p.id))}`
+    : `Sinh nhật ${fmtD(x.n.solar)}${x.n.lunar ? ' (theo âm lịch)' : ''} · tròn ${x.n.age} tuổi`;
+  const tag = x.kind === 'sn' && x.n.tho ? ` <span class="tag tho">Mừng thọ ${x.n.age}</span>` : '';
+  return `<div class="item" data-p="${esc(x.p.id)}">${avatar(x.p)}<div class="t"><b>${esc(pname(x.p))}${tag}</b><span><i class="fa-solid ${x.kind === 'gio' ? 'fa-fire-flame-curved' : 'fa-cake-candles'}"></i> ${sub}</span></div>
+    <span class="when ${whenCls(x.n.daysLeft)}">${whenTxt(x.n.daysLeft)}</span></div>`;
+}
 function renderGio(m) {
-  const list = S.persons.filter(isDead).map((p) => { const g = gioOf(p); return g && { p, g, n: nextDeathAnniversary(g[0], g[1]) }; }).filter((x) => x && x.n)
-    .sort((a, b) => a.n.daysLeft - b.n.daysLeft);
-  const noDate = S.persons.filter((p) => isDead(p) && !gioOf(p));
-  const item = (x) => `<div class="item" data-p="${esc(x.p.id)}">${avatar(x.p)}<div class="t"><b>${esc(pname(x.p))}</b><span>Giỗ ${x.g[0]}/${x.g[1]} âm · ${fmtD(x.n.solar)} · ${esc(S.A.label(x.p.id))}</span></div>
-    <span class="when ${x.n.daysLeft <= 3 ? 'bad' : x.n.daysLeft <= 14 ? 'warn' : 'ok'}">${x.n.daysLeft ? x.n.daysLeft + ' ngày' : 'Hôm nay'}</span></div>`;
-  const soon = list.filter((x) => x.n.daysLeft <= 30), later = list.filter((x) => x.n.daysLeft > 30);
+  S.cal = S.cal || 'gio';
   const today = new Date(), tl = solarToLunar(today.getDate(), today.getMonth() + 1, today.getFullYear());
+  const U = upcoming(today), list = S.cal === 'gio' ? U.gio : U.sn;
+  const soon = list.filter((x) => x.n.daysLeft <= 30), later = list.filter((x) => x.n.daysLeft > 30);
+  const noDate = S.cal === 'gio' ? S.persons.filter((p) => isDead(p) && !gioOf(p)) : S.persons.filter((p) => !isDead(p) && !nextBirthday(p, today));
+  const what = S.cal === 'gio' ? 'ngày giỗ' : 'sinh nhật';
   m.innerHTML = `<div class="page">
     <div class="sec"><i class="fa-regular fa-calendar"></i> Hôm nay ${fmtD([today.getDate(), today.getMonth() + 1, today.getFullYear()])} · âm lịch ${formatLunar(tl)}</div>
+    <div class="seg segtab"><label><input type="radio" name="cal" value="gio" ${S.cal === 'gio' ? 'checked' : ''}><i class="fa-solid fa-fire-flame-curved"></i> Ngày giỗ (${U.gio.length})</label>
+      <label><input type="radio" name="cal" value="sn" ${S.cal === 'sn' ? 'checked' : ''}><i class="fa-solid fa-cake-candles"></i> Sinh nhật (${U.sn.length})</label></div>
     <div class="sec"><i class="fa-solid fa-bell"></i> 30 ngày tới <span class="n">${soon.length}</span></div>
-    <div class="panel">${soon.length ? soon.map(item).join('') : '<div class="empty" style="padding:20px">Không có ngày giỗ nào trong 30 ngày tới</div>'}</div>
-    ${later.length ? `<div class="sec"><i class="fa-solid fa-calendar-days"></i> Cả năm <span class="n">${later.length}</span></div><div class="panel">${later.map(item).join('')}</div>` : ''}
-    ${noDate.length ? `<div class="sec"><i class="fa-solid fa-circle-question"></i> Chưa có ngày mất <span class="n">${noDate.length}</span></div><div class="panel">${noDate.map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc(S.A.label(p.id))} · cần bổ sung ngày mất âm lịch</span></div></div>`).join('')}</div>` : ''}
+    <div class="panel">${soon.length ? soon.map(eventItem).join('') : `<div class="empty" style="padding:20px">Không có ${what} nào trong 30 ngày tới</div>`}</div>
+    ${later.length ? `<div class="sec"><i class="fa-solid fa-calendar-days"></i> Cả năm <span class="n">${later.length}</span></div><div class="panel">${later.map(eventItem).join('')}</div>` : ''}
+    ${noDate.length ? `<div class="sec"><i class="fa-solid fa-circle-question"></i> ${S.cal === 'gio' ? 'Chưa có ngày mất' : 'Chưa có ngày sinh đủ'} <span class="n">${noDate.length}</span></div><div class="panel">${noDate.map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc(S.A.label(p.id))} · ${S.cal === 'gio' ? 'cần bổ sung ngày mất âm lịch' : 'cần đủ ngày/tháng/năm sinh'}</span></div></div>`).join('')}</div>` : ''}
   </div>`;
+  m.querySelectorAll('input[name=cal]').forEach((r) => (r.onchange = () => { S.cal = r.value; renderGio(m); }));
   m.querySelectorAll('[data-p]').forEach((el) => (el.onclick = () => showPerson(el.dataset.p)));
 }
 
