@@ -1,9 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, fileToAvatar } from './ui.js';
-import * as D from './data.js';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, fileToAvatar } from './ui.js?v=1792045184210';
+import * as D from './data.js?v=1792045184210';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792045184210';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792045184210';
 
+const APP_VER = '15/10 13:19';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -107,6 +108,7 @@ function renderLogin(err = '') {
     <div class="err" id="gErr">${esc(err)}</div>
     <p class="note">Chưa có tài khoản? <button type="button" class="linkbtn" id="lReg">Đăng ký dòng họ mới</button></p>
     ${D.isEmu ? '<p class="note"><i class="fa-solid fa-flask"></i> Đang chạy emulator (dữ liệu thử)</p>' : ''}
+    <p class="note" style="margin-top:4px">Phiên bản ${APP_VER}</p>
     <button type="button" class="instbtn" data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i>Cài ứng dụng lên máy</button>
   </form>`;
   bindInstall($('gate'));
@@ -892,4 +894,4 @@ async function treeSettings() {
 }
 
 // đăng ký service worker (PWA)
-if ('serviceWorker' in navigator && !D.isEmu && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && !D.isEmu && location.protocol === 'https:') navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});

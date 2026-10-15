@@ -1,6 +1,6 @@
 // Service worker: lưu sẵn giao diện để mở app tức thì / khi mất mạng.
 // Dữ liệu gia phả do Firestore tự lưu đệm (IndexedDB), không đi qua đây.
-const V = 'gp-1792044975417';
+const V = 'gp-1792045184209';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/app.js', 'js/ui.js', 'js/data.js', 'js/tree.js', 'js/lunar.js', 'js/firebase-config.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
@@ -12,7 +12,9 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   // file của app: lấy mạng trước (luôn bản mới), mất mạng thì dùng bản lưu
   if (u.origin === location.origin) {
-    e.respondWith(fetch(e.request).then((r) => { const c = r.clone(); caches.open(V).then((x) => x.put(e.request, c)); return r; })
+    // no-cache: luôn hỏi lại server (GitHub Pages cho trình duyệt giữ file 10 phút) → điện thoại thấy bản mới ngay
+    const req = e.request.mode === 'navigate' ? e.request.url : e.request;
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then((r) => { const c = r.clone(); caches.open(V).then((x) => x.put(e.request, c)); return r; })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html'))));
     return;
   }
