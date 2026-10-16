@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792124863407';
+import { esc } from './ui.js?v=1792125542704';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -132,11 +132,24 @@ export function layout(A, collapsed) {
   return { nodes, links, w, h };
 }
 
+const isDeadP = (p) => p.alive === false || !!(p.deathSolar || p.deathLunar);
+const dmy = (s) => { const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{3,4})$/); return m ? [+m[1], +m[2], +m[3]] : null; };
+const yr = (s) => +((String(s || '').match(/(\d{3,4})$/) || [])[1]) || 0;
+/** Tuổi: còn sống = tới hôm nay; đã mất = tuổi lúc mất (thọ). Đủ ngày/tháng/năm thì chính xác tới ngày, chỉ có năm thì theo năm */
+export function ageOf(p, today = new Date()) {
+  const bY = yr(p.birthSolar) || yr(p.birthLunar), bF = dmy(p.birthSolar);
+  if (!bY) return null;
+  let eF, eY;
+  if (isDeadP(p)) { eF = dmy(p.deathSolar); eY = yr(p.deathSolar) || yr(p.deathLunar); if (!eY) return null; }
+  else { eF = [today.getDate(), today.getMonth() + 1, today.getFullYear()]; eY = eF[2]; }
+  let a = eY - bY;
+  if (bF && eF && (eF[1] < bF[1] || (eF[1] === bF[1] && eF[0] < bF[0]))) a--;
+  return a >= 0 && a < 130 ? a : null;
+}
 const years = (p) => {
-  const y = (s) => (String(s || '').match(/(\d{3,4})$/) || [])[1] || '';
-  const b = y(p.birthSolar) || y(p.birthLunar), d = y(p.deathSolar) || y(p.deathLunar);
-  if (p.alive === false || d) return `${b || '?'} – ${d || '?'}`;
-  return b ? `${b}` : '';
+  const b = yr(p.birthSolar) || yr(p.birthLunar), d = yr(p.deathSolar) || yr(p.deathLunar), a = ageOf(p);
+  if (isDeadP(p)) return `${b || '?'} – ${d || '?'}${a !== null ? ` · thọ ${a}` : ''}`;
+  return b ? `${b}${a !== null ? ` · ${a} tuổi` : ''}` : '';
 };
 // Đo độ rộng chữ thật (chữ Việt có dấu rộng hẹp khác nhau) để tên không tràn khỏi ô
 const CTX = document.createElement('canvas').getContext('2d');
@@ -166,10 +179,10 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
     const [gen] = fit(A.label(p.id) + (n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''), room, 10.5, 10.5, 600);
     return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})"${bi !== undefined ? ` style="--bc:${branchColor(bi)}"` : ''}>
       <title>${esc(name)}</title>
-      <rect width="${NW}" height="${NH}" rx="10"/>
+      <rect width="${NW}" height="${NH}" rx="10"/>${dead ? '<g class="lotus"><title>Đã mất</title><circle cx="3" cy="3" r="10"/><text x="3" y="7" text-anchor="middle">&#xf5bb;</text></g>' : ''}
       ${p.photo ? `<clipPath id="c${esc(p.id)}"><circle cx="24" cy="${NH / 2}" r="16"/></clipPath><image href="${esc(p.photo)}" x="8" y="${NH / 2 - 16}" width="32" height="32" clip-path="url(#c${esc(p.id)})"/>` : ''}
       <text x="${x}" y="24" class="nm" style="font-size:${nf}px">${esc(nm)}</text>
-      <text x="${x}" y="42" class="sub">${esc(years(p))}</text>
+      ${(() => { const [t, fz] = fit(years(p), room, 11.5, 10, 400); return `<text x="${x}" y="42" class="sub" style="font-size:${fz}px">${esc(t)}</text>`; })()}
       <text x="${x}" y="57" class="gen">${esc(gen)}</text>
       ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
       ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}

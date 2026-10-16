@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792124863407';
-import * as D from './data.js?v=1792124863407';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor } from './tree.js?v=1792124863407';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792124863407';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792125542704';
+import * as D from './data.js?v=1792125542704';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792125542704';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792125542704';
 
-const APP_VER = '16/10 11:27';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 11:39';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -527,13 +527,13 @@ function showPerson(id, refresh) {
   const bl = lunarOf(p.birthSolar), dl = lunarOf(p.deathSolar), gio = isDead(p) && gioOf(p), next = gio && nextDeathAnniversary(gio[0], gio[1]);
   const row = (ic, k, v) => (v ? `<div class="r"><i class="fa-solid ${ic}"></i><span>${k}</span><b>${v}</b></div>` : '');
   const html = `
-    <div class="phead">${avatar(p, 'ph')}<div style="min-width:0"><h2>${esc(pname(p))}</h2>
+    <div class="phead">${avatar(p, 'ph').replace(/<\/div>$/, isDead(p) ? '<span class="lotusb" title="Đã mất"><i class="fa-solid fa-spa"></i></span></div>' : '</div>')}<div style="min-width:0"><h2>${esc(pname(p))}</h2>
       <div class="pg">${esc(A.label(id))}${A.spouseIn.has(id) ? (p.gender === 'f' ? ' · con dâu' : ' · con rể') : ''}${S.tree.anchorId === id ? ' · <i class="fa-solid fa-flag"></i> mốc đời 1' : ''}</div>
       <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
     <div class="rows">
       ${row('fa-venus-mars', 'Giới tính', p.gender === 'f' ? 'Nữ' : 'Nam')}
-      ${row('fa-cake-candles', 'Sinh', p.birthSolar || p.birthLunar ? `${esc(p.birthSolar || '')}${bl ? `<small>Âm lịch: ${formatLunar(bl)}</small>` : p.birthLunar ? `<small>Âm lịch: ${esc(p.birthLunar)}</small>` : ''}` : '')}
-      ${isDead(p) ? row('fa-dove', 'Mất', `${esc(p.deathSolar || '') || (p.deathLunar ? '' : 'Đã mất')}${dl ? `<small>Âm lịch: ${formatLunar(dl)}</small>` : p.deathLunar ? `<small>Âm lịch: ${esc(p.deathLunar)}</small>` : ''}`) : ''}
+      ${row('fa-cake-candles', 'Sinh', p.birthSolar || p.birthLunar ? `${esc(p.birthSolar || '')}${!isDead(p) && ageOf(p) !== null ? ` · ${ageOf(p)} tuổi` : ''}${bl ? `<small>Âm lịch: ${formatLunar(bl)}</small>` : p.birthLunar ? `<small>Âm lịch: ${esc(p.birthLunar)}</small>` : ''}` : '')}
+      ${isDead(p) ? row('fa-dove', 'Mất', `${esc(p.deathSolar || '') || (p.deathLunar ? '' : 'Đã mất')}${ageOf(p) !== null ? ` · hưởng thọ ${ageOf(p)} tuổi` : ''}${dl ? `<small>Âm lịch: ${formatLunar(dl)}</small>` : p.deathLunar ? `<small>Âm lịch: ${esc(p.deathLunar)}</small>` : ''}`) : ''}
       ${(() => { const b = nextBirthday(p); return b ? row('fa-gift', 'Sinh nhật', `${fmtD(b.solar)}${b.lunar ? ' (âm lịch)' : ''}<small>${b.daysLeft ? 'còn ' + b.daysLeft + ' ngày' : 'hôm nay'} · tròn ${b.age} tuổi${b.tho ? ' · mừng thọ' : ''}</small>`) : ''; })()}
       ${next ? row('fa-fire-flame-curved', 'Giỗ', `${gio[0]}/${gio[1]} âm lịch<small>Năm nay: ${fmtD(next.solar)} · ${next.daysLeft ? `còn ${next.daysLeft} ngày` : 'hôm nay'}</small>`) : ''}
       ${row('fa-location-dot', 'Nơi sinh', esc(p.birthPlace))}

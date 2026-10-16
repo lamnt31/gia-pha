@@ -312,6 +312,13 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .tn.spouse rect { stroke-dasharray: 5 3; }
   .tn.dead rect { fill: var(--bg2); }
   .tn.dead .nm { fill: var(--muted); }
+  /* người đã mất: bông sen trắng trên nền tròn đen mờ (như ảnh tưởng niệm) */
+  .tn .lotus circle { fill: rgba(17,24,39,.72); stroke: #fff; stroke-width: 1.5; }
+  .tn .lotus text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px; fill: #fff; }
+  .ph { position: relative; overflow: visible; }
+  .ph > img { border-radius: 50%; }
+  .ph .lotusb { position: absolute; left: -2px; top: -2px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+               background: rgba(17,24,39,.72); color: #fff; font-size: 11px; border: 1.5px solid #fff; }
   .tn.sel rect { stroke: var(--accent); stroke-width: 3; }
   /* người được tìm / "Xem trên cây": phát sáng + nhấp nháy */
   .tn.flash rect { stroke: var(--accent); stroke-width: 4; animation: nodeFlash .8s ease-in-out 4; filter: drop-shadow(0 0 10px var(--accent)); }
@@ -419,6 +426,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792124863407"></script>
+<script type="module" src="js/app.js?v=1792125542704"></script>
 </body>
 </html>
