@@ -83,6 +83,10 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
   .filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 4px; }
   .filters::-webkit-scrollbar { display: none; }
+  @media (min-width: 600px) { .filters { flex-wrap: wrap; overflow: visible; } }
+  .filters .chip i { font-size: .85em; }
+  .lcount { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 2px 6px; font-size: var(--fs-sm); color: var(--muted); }
+  .lcount b { color: var(--text); }
   .search { position: relative; flex: 1; min-width: 160px; }
   .search > i { position: absolute; z-index: 1; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; }
   .search input { width: 100%; font: inherit; font-size: var(--fs-base); padding: 8px 38px 8px 34px; border-radius: 99px; border: 1px solid var(--line);
@@ -459,6 +463,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792144369849"></script>
+<script type="module" src="js/app.js?v=1792144638477"></script>
 </body>
 </html>

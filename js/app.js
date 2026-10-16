@@ -1,14 +1,14 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792144369849';
-import * as D from './data.js?v=1792144369849';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792144369849';
-import { makeKin, DIALECTS } from './kin.js?v=1792144369849';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792144369849';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792144638477';
+import * as D from './data.js?v=1792144638477';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792144638477';
+import { makeKin, DIALECTS } from './kin.js?v=1792144638477';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792144638477';
 
-const APP_VER = '16/10 16:52';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 16:57';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
-const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
+const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
 const canEdit = () => S.role === 'owner' || S.role === 'editor';
 const isOwner = () => S.role === 'owner';
 const byId = (id) => S.A && S.A.byId.get(id);
@@ -1044,6 +1044,23 @@ async function propose(p) {
 }
 
 // ======================= Tab Danh sách =======================
+/** Tiêu chí lọc danh sách. g = nhóm: cùng nhóm "hoặc", khác nhóm "và" */
+const LFILTERS = [
+  { k: 'alive', n: 'Còn sống', g: 'life', test: (p) => !isDead(p) },
+  { k: 'dead', n: 'Đã mất', g: 'life', test: (p) => isDead(p) },
+  { k: 'm', n: 'Nam', g: 'sex', test: (p) => p.gender !== 'f' },
+  { k: 'f', n: 'Nữ', g: 'sex', test: (p) => p.gender === 'f' },
+  { k: 'blood', n: 'Người trong họ', g: 'in', test: (p) => !S.A.spouseIn.has(p.id) },
+  { k: 'inlaw', n: 'Dâu / rể', g: 'in', test: (p) => S.A.spouseIn.has(p.id) },
+  { k: 'mine', n: 'Nhánh của tôi', g: 'mine', ok: () => !!myMe(), test: (p) => lineSet().has(p.id) },
+  { k: 'canedit', n: 'Tôi sửa được', g: 'ed', ok: () => isLiner(), test: (p) => canEditP(p) },
+  { k: 'phone', n: 'Có SĐT', g: 'phone', test: (p) => !!p.phone },
+  { k: 'nophoto', n: 'Chưa có ảnh', g: 'photo', test: (p) => !p.photo },
+  { k: 'nobirth', n: 'Thiếu ngày sinh', g: 'nb', test: (p) => !p.birthSolar && !p.birthLunar },
+  { k: 'nogio', n: 'Mất – thiếu ngày giỗ', g: 'ng', test: (p) => isDead(p) && !gioOf(p) },
+  { k: 'noheir', n: 'Vô hậu', g: 'noheir', test: (p) => S.A.noHeir(p.id) },
+  { k: 'loose', n: 'Chưa nối', g: 'loose', test: (p, c) => c.loose(p) },
+];
 function renderList(m) {
   const gens = [...new Set(S.persons.map((p) => S.A.shown(p.id)).filter((g) => g !== null))].sort((a, b) => a - b);
   m.innerHTML = `<div class="page">
@@ -1056,17 +1073,26 @@ function renderList(m) {
     <div class="listbar">
       <div style="display:flex;gap:8px"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="lq" placeholder="Tìm tên (gõ không dấu cũng được)" value="${esc(S.q)}" autocomplete="off"><button class="clr" id="lqx" ${S.q ? '' : 'hidden'}><i class="fa-solid fa-xmark"></i></button></div>
         <button class="ibtn" id="csv" title="Xuất Excel (CSV)"><i class="fa-solid fa-file-excel"></i></button>${canEdit() || isLiner() ? '<button class="ibtn" id="lbulk" title="Sửa nhiều người"><i class="fa-solid fa-users-gear"></i></button>' : ''}${canEditAll() ? '<button class="ibtn" id="ladd" title="Thêm người"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div>
-      <div class="filters">${[['all', 'Tất cả'], ['alive', 'Còn sống'], ['dead', 'Đã mất'], ['m', 'Nam'], ['f', 'Nữ'], ['noheir', 'Vô hậu'], ['loose', 'Chưa nối']].map(([k, n]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
+      <div class="filters">${LFILTERS.filter((f) => !f.ok || f.ok()).map((f) => `<button class="chip ${S.fl.has(f.k) ? 'on' : ''}" data-f="${f.k}" aria-pressed="${S.fl.has(f.k)}">${S.fl.has(f.k) ? '<i class="fa-solid fa-check"></i> ' : ''}${f.n}</button>`).join('')}
         <select class="chip" id="lgen" aria-label="Lọc theo đời"><option value="">Mọi đời</option>${gens.map((g) => `<option value="${g}" ${String(S.gen) === String(g) ? 'selected' : ''}>${esc(g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g))}</option>`).join('')}</select></div>
     </div>
+    <div class="lcount" id="lcount"></div>
     <div class="panel" id="lres"></div></div>`;
   const draw = () => {
     const t = fold(S.q.trim());
-    const loose = (p) => !S.A.gen.has(p.id) || (!S.A.has(p.fatherId) && !S.A.has(p.motherId) && !(p.spouseIds || []).some(S.A.has) && !S.persons.some((k) => k.fatherId === p.id || k.motherId === p.id));
+    const ctx = { loose: (p) => !S.A.gen.has(p.id) || (!S.A.has(p.fatherId) && !S.A.has(p.motherId) && !(p.spouseIds || []).some(S.A.has) && !S.persons.some((k) => k.fatherId === p.id || k.motherId === p.id)) };
+    // nhiều tiêu chí: cùng nhóm → "hoặc" (Nam hoặc Nữ), khác nhóm → "và" (Đã mất và Nữ)
+    const groups = new Map();
+    for (const f of LFILTERS) if (S.fl.has(f.k) && (!f.ok || f.ok())) { if (!groups.has(f.g)) groups.set(f.g, []); groups.get(f.g).push(f.test); }
     const list = S.persons.filter((p) => (!t || fold([p.name, p.nick, p.alias, p.branch].join(' ')).includes(t))
-      && (S.filter === 'all' || (S.filter === 'alive' && !isDead(p)) || (S.filter === 'dead' && isDead(p)) || (S.filter === 'm' && p.gender !== 'f') || (S.filter === 'f' && p.gender === 'f') || (S.filter === 'loose' && loose(p)) || (S.filter === 'noheir' && S.A.noHeir(p.id)))
+      && [...groups.values()].every((tests) => tests.some((fn) => fn(p, ctx)))
       && (S.gen === '' || String(S.A.shown(p.id)) === String(S.gen)))
       .sort(byGen);
+    const active = groups.size + (S.gen !== '' ? 1 : 0) + (t ? 1 : 0);
+    const names = [...LFILTERS.filter((f) => S.fl.has(f.k) && (!f.ok || f.ok())).map((f) => f.n), ...(S.gen !== '' ? [$('lgen').selectedOptions[0].text] : []), ...(t ? [`"${S.q.trim()}"`] : [])];
+    $('lcount').innerHTML = active ? `<span>Kết quả: <b>${list.length}</b> / ${S.persons.length} người · ${esc(names.join(' + '))}</span><button class="linkbtn" id="lclear"><i class="fa-solid fa-xmark"></i> Bỏ lọc</button>`
+      : `<span>Tất cả: <b>${S.persons.length}</b> người</span>`;
+    if ($('lclear')) $('lclear').onclick = () => { S.fl.clear(); S.gen = ''; S.q = ''; renderList(m); };
     $('lres').innerHTML = list.length ? list.slice(0, 500).map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p), p.branch].filter(Boolean).join(' · '))}</span></div>${isDead(p) ? '<span class="when info">Đã mất</span>' : ''}</div>`).join('')
       + (list.length > 500 ? `<div class="empty" style="padding:14px">… còn ${list.length - 500} người, hãy gõ tìm cụ thể hơn</div>` : '')
       : `<div class="empty"><i class="fa-solid fa-magnifying-glass"></i>Không có ai phù hợp</div>`;
@@ -1074,7 +1100,14 @@ function renderList(m) {
   };
   $('lq').oninput = () => { S.q = $('lq').value; $('lqx').hidden = !S.q; draw(); };
   $('lqx').onclick = () => { S.q = ''; $('lq').value = ''; $('lqx').hidden = true; draw(); $('lq').focus(); };
-  m.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => { S.filter = b.dataset.f; m.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+  // bấm lần 1: lọc theo tiêu chí; bấm lần nữa: bỏ tiêu chí đó
+  m.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => {
+    const k = b.dataset.f, on = !S.fl.has(k);
+    on ? S.fl.add(k) : S.fl.delete(k);
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+    b.innerHTML = (on ? '<i class="fa-solid fa-check"></i> ' : '') + LFILTERS.find((f) => f.k === k).n;
+    draw();
+  }));
   $('lgen').onchange = () => { S.gen = $('lgen').value; draw(); };
   $('csv').onclick = exportCsv;
   if ($('ladd')) $('ladd').onclick = () => personForm(null, { mode: 'first' });
