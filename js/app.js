@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792127099914';
-import * as D from './data.js?v=1792127099914';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792127099914';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792127099914';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792131808033';
+import * as D from './data.js?v=1792131808033';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792131808033';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792131808033';
 
-const APP_VER = '16/10 12:04';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 13:23';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -973,6 +973,7 @@ function renderGio(m) {
   const U = upcoming(today), list = S.cal === 'gio' ? U.gio : U.sn;
   const soon = list.filter((x) => x.n.daysLeft <= 30), later = list.filter((x) => x.n.daysLeft > 30);
   const noDate = S.cal === 'gio' ? S.persons.filter((p) => isDead(p) && !gioOf(p)) : S.persons.filter((p) => !isDead(p) && !nextBirthday(p, today));
+  noDate.sort(byGen);   // theo đời, trong đời theo vị trí trên cây (như Danh sách)
   const what = S.cal === 'gio' ? 'ngày giỗ' : 'sinh nhật';
   m.innerHTML = `<div class="page">
     <div class="sec"><i class="fa-regular fa-calendar"></i> Hôm nay ${fmtD([today.getDate(), today.getMonth() + 1, today.getFullYear()])} · âm lịch ${formatLunar(tl)}</div>
