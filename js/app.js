@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792124649281';
-import * as D from './data.js?v=1792124649281';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792124649281';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792124649281';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792124863407';
+import * as D from './data.js?v=1792124863407';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor } from './tree.js?v=1792124863407';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792124863407';
 
-const APP_VER = '16/10 11:24';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 11:27';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -443,12 +443,14 @@ function renderTreeTab(fromData) {
   if (!S.pz || !$('tbox')) {
     m.innerHTML = `<div class="tbox" id="tbox"><svg id="tsvg" xmlns="http://www.w3.org/2000/svg"></svg>
       <div class="tsearch"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="tq" placeholder="Tìm người trên cây…" autocomplete="off"><button class="clr" id="tqx" hidden><i class="fa-solid fa-xmark"></i></button></div><div class="panel sres" id="tres" hidden></div></div>
+      <div class="blegend" id="blegend"></div>
       <div class="tools"><button class="ibtn" id="zin" title="Phóng to"><i class="fa-solid fa-plus"></i></button><button class="ibtn" id="zout" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
-      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button>${canEdit() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
+      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEdit() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
     S.pz = panZoom($('tbox'), $('tsvg'), {
       onTap: (id) => { S.sel = id; drawTree(); showPerson(id); },
       onToggle: (id) => { S.collapsed.has(id) ? S.collapsed.delete(id) : S.collapsed.add(id); store('col_' + S.tree.id, [...S.collapsed]); drawTree(); },
     });
+    $('zcol').onclick = () => { store('branchColor', store('branchColor') === false); drawTree(); toast(store('branchColor') === false ? 'Đã tắt màu theo nhánh' : 'Đã bật màu theo nhánh'); };
     $('zin').onclick = () => S.pz.zoom(1.25); $('zout').onclick = () => S.pz.zoom(0.8); $('zfit').onclick = () => S.pz.fit();
     if ($('zadd')) $('zadd').onclick = () => personForm(null, { mode: 'first' });
     const q = $('tq'), res = $('tres');
@@ -469,7 +471,16 @@ let LAYOUT = null;
 function drawTree() {
   if (!S.A || !$('tsvg')) return;
   LAYOUT = layout(S.A, S.collapsed);
-  renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []));
+  const colorOn = store('branchColor') !== false;
+  renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []), colorOn);
+  // chú thích màu nhánh: bấm để tới gốc nhánh
+  const lg = $('blegend');
+  if (lg) {
+    const heads = colorOn ? S.A.branchHeads.filter((h) => byId(h.id) && byId(h.id).gender !== 'f') : [];
+    lg.hidden = heads.length < 2;
+    lg.innerHTML = heads.map((h) => `<button data-bh="${esc(h.id)}"><i style="background:${branchColor(h.idx)}"></i>${esc(pname(byId(h.id)))}</button>`).join('');
+    lg.querySelectorAll('[data-bh]').forEach((b) => (b.onclick = () => jumpTo(b.dataset.bh, false)));
+  }
 }
 // tên trên cây được đo theo font Be Vietnam Pro → vẽ lại khi font tải xong
 if (document.fonts) document.fonts.ready.then(() => { if (S.tab === 'tree') drawTree(); });

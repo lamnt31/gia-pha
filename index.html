@@ -320,6 +320,14 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .tn .sub { font-size: 11.5px; fill: var(--muted); }
   .tn .gen { font-size: 10.5px; fill: var(--accent); font-weight: 600; }
   .tn { cursor: pointer; }
+  /* nam theo nhánh: mỗi nhánh 1 màu (nữ giữ hồng) */
+  .tn.m.br rect { stroke: var(--bc); fill: color-mix(in srgb, var(--bc) 12%, var(--card-solid)); }
+  .tn.m.br.dead rect { fill: color-mix(in srgb, var(--bc) 6%, var(--bg2)); }
+  .blegend { position: absolute; left: 12px; right: 64px; bottom: 16px; z-index: 3; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
+  .blegend::-webkit-scrollbar { display: none; }
+  .blegend button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 99px; border: 1px solid var(--line);
+                    background: var(--card-solid); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
+  .blegend i { width: 10px; height: 10px; border-radius: 50%; }
   /* vô hậu (đứt mạch): viền xám đỏ + biểu tượng */
   .tn.noheir rect { stroke: #c2410c; stroke-opacity: .55; }
   .tn .nh text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px; fill: #dc2626; opacity: .8; }
@@ -411,6 +419,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792124649281"></script>
+<script type="module" src="js/app.js?v=1792124863407"></script>
 </body>
 </html>

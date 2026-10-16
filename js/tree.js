@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792124649281';
+import { esc } from './ui.js?v=1792124863407';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -63,7 +63,17 @@ export function analyze(persons, anchorId) {
   const isDeadP = (p) => p.alive === false || !!(p.deathSolar || p.deathLunar);
   /** Vô hậu (đứt mạch): nam, đã mất, người trong dòng, không có con trai nào (con trai nuôi vẫn tính là có người nối dõi) */
   const noHeir = (id) => { const p = byId.get(id); return !!p && p.gender !== 'f' && isDeadP(p) && !spouseIn.has(id) && !(allKids.get(id) || []).some((k) => k.gender !== 'f'); };
-  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir };
+  const branch = new Map(), branchHeads = [];
+  for (const r of roots) {
+    let split = r;
+    while ((kidsOf.get(split.id) || []).length === 1) split = kidsOf.get(split.id)[0];
+    for (const h of kidsOf.get(split.id) || []) {
+      const idx = branchHeads.length; branchHeads.push({ id: h.id, idx });
+      const walk = (x) => { branch.set(x.id, idx); (kidsOf.get(x.id) || []).forEach(walk); };
+      walk(h);
+    }
+  }
+  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads };
 }
 
 /** Kiểm tra gán cha/mẹ có tạo vòng lặp không: newParent không được là con cháu của personId */
@@ -141,16 +151,20 @@ function fit(t, maxW, px, minPx, w = 700) {
 }
 
 /** Vẽ cây vào svg; trả về hàm render lại */
-export function renderTree(svg, L, A, selectedId, linked = new Set()) {
+/** Màu nam theo nhánh (nữ giữ màu hồng). Tránh xanh dương mặc định và hồng */
+export const BRANCH_COLORS = ['#059669', '#d97706', '#7c3aed', '#0891b2', '#b45309', '#65a30d', '#c026d3', '#0d9488', '#ea580c', '#4f46e5', '#a16207', '#be123c'];
+export const branchColor = (i) => BRANCH_COLORS[i % BRANCH_COLORS.length];
+export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranches = true) {
   const node = (n) => {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
     const nh = n.kind === 'blood' && A.noHeir(p.id), icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0);
-    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
+    const bi = colorBranches && p.gender !== 'f' && n.kind === 'blood' ? A.branch.get(p.id) : undefined;
+    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${bi !== undefined ? 'br' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
     const name = p.name || 'Chưa rõ tên';
     const x = p.photo ? 48 : 12, room = NW - x - 8;
     const [nm, nf] = fit(name, room - icons * 14, 13.5, 11.5);
     const [gen] = fit(A.label(p.id) + (n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''), room, 10.5, 10.5, 600);
-    return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})">
+    return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})"${bi !== undefined ? ` style="--bc:${branchColor(bi)}"` : ''}>
       <title>${esc(name)}</title>
       <rect width="${NW}" height="${NH}" rx="10"/>
       ${p.photo ? `<clipPath id="c${esc(p.id)}"><circle cx="24" cy="${NH / 2}" r="16"/></clipPath><image href="${esc(p.photo)}" x="8" y="${NH / 2 - 16}" width="32" height="32" clip-path="url(#c${esc(p.id)})"/>` : ''}
