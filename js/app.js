@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792138894932';
-import * as D from './data.js?v=1792138894932';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792138894932';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792138894932';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792139224875';
+import * as D from './data.js?v=1792139224875';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792139224875';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792139224875';
 
-const APP_VER = '16/10 15:21';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 15:27';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1805,7 +1805,7 @@ async function renderUsers(m) {
     $('ures').innerHTML = rows.map((u) => {
       const tr = u.role === 'root' ? 'Toàn quyền mọi gia phả' : Object.entries(u.trees || {}).map(([t, r]) => `${trees[t] || '?'}: ${r === 'editor' ? 'biên tập' : 'xem'}`).join(' · ') || 'Chưa cấp quyền gia phả nào';
       return `<div class="item" data-u="${esc(u.uid)}"><div class="ic ${u.role === 'root' ? 'warn' : u.active === false ? 'bad' : 'info'}"><i class="fa-solid fa-${u.role === 'root' ? 'crown' : 'user'}"></i></div>
-        <div class="t"><b>${esc(u.name || u.username)}</b><span>@${esc(u.username)}${u.title ? ' · ' + esc(u.title) : ''}${u.phone ? ' · ' + esc(u.phone) : ''}</span>${u.email && u.role !== 'root' ? `<span>${u.emailOk ? '<i class="fa-solid fa-circle-check" style="color:var(--ok)"></i>' : '<i class="fa-regular fa-clock" style="color:var(--warn,#d97706)"></i>'} ${esc(u.email)} · ${u.emailOk ? 'email đã xác nhận' : 'chưa xác nhận (chưa bấm link trong email)'}</span>` : ''}<span>${esc(tr)}</span></div>
+        <div class="t"><b>${esc(u.name || u.username)}</b><span>@${esc(u.username)}${u.title ? ' · ' + esc(u.title) : ''}${u.phone ? ' · ' + esc(u.phone) : ''}</span>${u.email && u.role !== 'root' && u.mailMode === 'contact' ? `<span><i class="fa-regular fa-envelope"></i> ${esc(u.email)} · chỉ để liên hệ</span>` : ''}${u.email && u.role !== 'root' && u.mailMode !== 'contact' ? `<span>${u.emailOk ? '<i class="fa-solid fa-circle-check" style="color:var(--ok)"></i>' : '<i class="fa-regular fa-clock" style="color:var(--warn,#d97706)"></i>'} ${esc(u.email)} · ${u.emailOk ? 'email đã xác nhận' : 'chưa xác nhận (chưa bấm link trong email)'}</span>` : ''}<span>${esc(tr)}</span></div>
         <span class="when ${u.active === false ? 'bad' : 'ok'}">${u.active === false ? 'Tắt' : 'Hoạt động'}</span></div>`;
     }).join('') || '<div class="empty" style="padding:20px">Không tìm thấy</div>';
     $('ures').querySelectorAll('[data-u]').forEach((el) => (el.onclick = () => { const u = list.find((x) => x.uid === el.dataset.u); if (u.role === 'root') editMe(); else userForm(u); }));
@@ -1829,10 +1829,10 @@ function userForm(u) {
       ${isNew ? `<div class="fld full"><label>Email (không bắt buộc)</label><input id="u_email" type="email" placeholder="Để người dùng tự lấy lại mật khẩu"><div class="hint">Không có email: quên mật khẩu thì phải tạo tài khoản mới</div></div>
       <label class="ck full" id="u_inviteRow" hidden><input type="checkbox" id="u_invite" checked>Gửi email mời: người dùng <b>tự đặt mật khẩu</b> rồi vào thẳng màn đăng nhập đã điền sẵn tài khoản</label>
       <div class="fld full"><label>Mật khẩu *</label><input id="u_pw" type="text" autocomplete="off" minlength="6" value="${esc(Math.random().toString(36).slice(2, 10))}" required><div class="hint">Gửi mật khẩu này cho người dùng; họ tự đổi sau khi đăng nhập</div></div>`
-        : `<div class="fld full"><label>Email</label><input value="${esc(d.email || '— không có —')}" disabled>${d.email ? `<div class="hint">${d.emailOk ? '✔ Đã xác nhận – người dùng đã đặt mật khẩu qua link trong email' : '⏳ Chưa xác nhận – người dùng chưa bấm link trong email (sai email thì sẽ không bao giờ xác nhận)'}</div>` : ''}</div>
+        : `<div class="fld full"><label>Email</label><input value="${esc(d.email || '— không có —')}" disabled>${d.email ? `<div class="hint">${d.mailMode === 'contact' ? 'Email đã dùng cho tài khoản khác → chỉ để liên hệ (quên mật khẩu thì quản trị cấp lại)' : d.emailOk ? '✔ Đã xác nhận – người dùng đã đặt mật khẩu qua link trong email' : '⏳ Chưa xác nhận – người dùng chưa bấm link trong email (sai email thì sẽ không bao giờ xác nhận)'}</div>` : ''}</div>
       <label class="ck full"><input type="checkbox" id="u_active" ${d.active !== false ? 'checked' : ''}>Hoạt động (bỏ chọn để tắt tài khoản, gỡ mọi quyền)</label>
       <button type="button" class="abtn full" id="uLink"><i class="fa-solid fa-paper-plane"></i>Gửi link đăng nhập (điền sẵn tài khoản)</button>
-      ${d.email ? '<button type="button" class="abtn full" id="uMail"><i class="fa-solid fa-envelope"></i>Gửi email đặt mật khẩu</button>' : ''}`}
+      ${d.email && d.mailMode !== 'contact' ? '<button type="button" class="abtn full" id="uMail"><i class="fa-solid fa-envelope"></i>Gửi email đặt mật khẩu</button>' : ''}`}
     </div>
     <div class="fsec"><i class="fa-solid fa-shield-halved"></i>Quyền theo gia phả</div>
     <div class="rows">${Object.entries(trees).map(([t, n]) => `<div class="r"><span style="color:var(--text);flex:1">${esc(n)}</span><select class="rsel" data-tr="${esc(t)}" aria-label="Quyền trên: ${esc(n)}">${Object.entries(TROLE).map(([k, l]) => `<option value="${k}" ${(d.trees || {})[t] === k || (!k && !(d.trees || {})[t]) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')
@@ -1845,7 +1845,7 @@ function userForm(u) {
   if ($('uMail')) $('uMail').onclick = async () => {
     if (!await ask({ title: 'Gửi email đặt mật khẩu', msg: `Gửi email tới <b>${esc(d.email)}</b>. ${esc(d.name || d.username)} bấm link trong email để đặt mật khẩu mới (mật khẩu cũ sẽ không dùng được nữa sau khi đặt), rồi vào thẳng màn đăng nhập đã điền sẵn tài khoản.`, ok: 'Gửi' })) return;
     busy('Đang gửi…');
-    try { await D.sendSetPasswordEmail(d.email, loginUrl(d.username)); busy(); toast('Đã gửi email tới ' + d.email, 4000); } catch (e) { busy(); toast(D.errMsg(e), 5000); }
+    try { await D.sendSetPasswordEmail(d.authEmail || d.email, loginUrl(d.username)); busy(); toast('Đã gửi email tới ' + d.email, 4000); } catch (e) { busy(); toast(D.errMsg(e), 5000); }
   };
   if ($('uLink')) $('uLink').onclick = () => showShareSheet({ title: `Link đăng nhập – ${d.name || d.username}`, url: loginUrl(d.username),
     text: `Gia phả ${D.clan.name || D.clan.code}: bấm link, nhập mật khẩu là vào (tài khoản ${d.username})`,
@@ -1861,11 +1861,12 @@ function userForm(u) {
     busy(isNew ? 'Đang tạo…' : 'Đang lưu…');
     try {
       if (isNew) {
-        await D.createUser(f);
-        const invite = f.email && $('u_invite') && $('u_invite').checked && !$('u_inviteRow').hidden;
+        const cu = await D.createUser(f);
+        const invite = cu.hasEmail && $('u_invite') && $('u_invite').checked && !$('u_inviteRow').hidden;
         let mailed = false;
-        if (invite) { busy('Đang gửi email mời…'); try { await D.sendSetPasswordEmail(f.email, loginUrl(f.username)); mailed = true; } catch (e) { toast('Tạo xong nhưng chưa gửi được email: ' + D.errMsg(e), 5000); } }
+        if (invite) { busy('Đang gửi email mời…'); try { await D.sendSetPasswordEmail(cu.authEmail, loginUrl(f.username)); mailed = true; } catch (e) { toast('Tạo xong nhưng chưa gửi được email: ' + D.errMsg(e), 5000); } }
         busy(); closeSheet(true);
+        if (cu.mailMode === 'contact') await ask({ title: 'Email đã dùng cho tài khoản khác', msg: `Email <b>${esc(f.email)}</b> đã được dùng cho một tài khoản khác. Tài khoản <b>${esc(f.username)}</b> vẫn được tạo, email chỉ lưu để <b>liên hệ</b>: không gửi email mời / lấy lại mật khẩu được (quên mật khẩu thì bạn cấp lại). Gmail / Outlook / iCloud thì dùng chung được đầy đủ.`, ok: 'Đã hiểu' });
         if (mailed) await ask({ title: 'Đã tạo & gửi email mời', msg: `Đã gửi email tới <b>${esc(f.email)}</b>. <b>${esc(f.name)}</b> bấm link trong email để <b>tự đặt mật khẩu</b>, rồi bấm <b>Tiếp tục</b> để vào màn đăng nhập đã điền sẵn tài khoản – bạn không cần gửi mật khẩu.<br><br><small>Không thấy email? Xem trong thư mục Spam / Quảng cáo. Hoặc gửi link: ${esc(loginUrl(f.username))}</small>`, ok: 'Đóng' });
         else await ask({ title: 'Đã tạo người dùng', msg: `Gửi thông tin đăng nhập cho <b>${esc(f.name)}</b>:<br>Link: <b>${esc(loginUrl(f.username))}</b> (mở là điền sẵn tài khoản)<br>Mã dòng họ: <b>${esc(D.clan.code)}</b><br>Tên đăng nhập: <b>${esc(f.username)}</b><br>Mật khẩu: <b>${esc(f.password)}</b>`, ok: 'Copy & đóng' })
           .then((ok) => ok && navigator.clipboard && navigator.clipboard.writeText(`Gia phả ${D.clan.name || D.clan.code} – bấm link, nhập mật khẩu là vào:\n${loginUrl(f.username)}\nMã dòng họ: ${D.clan.code}\nTên đăng nhập: ${f.username}\nMật khẩu: ${f.password}`).then(() => toast('Đã copy')).catch(() => {}));

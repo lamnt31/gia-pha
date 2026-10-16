@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792138894932';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792139224875';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -31,6 +31,21 @@ export const CODE_RE = /^[a-z0-9][a-z0-9-]{2,29}$/;      // mã dòng họ
 export const USER_RE = /^[a-z0-9][a-z0-9._]{1,29}$/;     // tên đăng nhập
 // Người dùng không có email: đăng nhập bằng email "ảo" không gửi thư được (chỉ để Firebase Auth nhận diện)
 const synthEmail = (username, code) => `${username}@${code}.giapha.local`;
+// Firebase: 1 email chỉ cho 1 tài khoản. Cho phép trùng email giữa các dòng họ / người dùng:
+//  - Gmail, Outlook, iCloud… hỗ trợ "địa chỉ phụ" ten+xxx@ → thư vẫn về đúng hộp thư → vẫn mời / lấy lại mật khẩu qua email được
+//  - nhà cung cấp khác → email chỉ để liên hệ, tài khoản đăng nhập bằng email nội bộ (quên mật khẩu thì quản trị cấp lại)
+const PLUS_OK = /@(gmail|googlemail|outlook|hotmail|live|msn|icloud|me|mac|proton|protonmail|pm|fastmail|yandex)\.[a-z.]+$/i;
+const aliasEmail = (email, code, username) => { const i = email.lastIndexOf('@'); return `${email.slice(0, i).split('+')[0]}+${code}.${username}${email.slice(i)}`.toLowerCase(); };
+/** Tạo tài khoản đăng nhập; email trùng → địa chỉ phụ hoặc email nội bộ. Trả về { cred, authEmail, mailMode: own | alias | contact | none } */
+async function createAuthAccount(a, email, code, username, pw, allowContact = true) {
+  email = (email || '').trim();
+  if (!email) return { cred: await createUserWithEmailAndPassword(a, synthEmail(username, code), pw), authEmail: synthEmail(username, code), mailMode: 'none' };
+  try { return { cred: await createUserWithEmailAndPassword(a, email, pw), authEmail: email.toLowerCase(), mailMode: 'own' }; }
+  catch (e) { if (!String(e.code).includes('email-already-in-use')) throw e; }
+  if (PLUS_OK.test(email)) { const al = aliasEmail(email, code, username); return { cred: await createUserWithEmailAndPassword(a, al, pw), authEmail: al, mailMode: 'alias' }; }
+  if (!allowContact) throw new Error('Email này đã dùng cho tài khoản khác. Quản trị cần email tự lấy lại mật khẩu được – hãy dùng Gmail / Outlook / iCloud (cho phép dùng chung) hoặc email khác.');
+  return { cred: await createUserWithEmailAndPassword(a, synthEmail(username, code), pw), authEmail: synthEmail(username, code), mailMode: 'contact' };
+}
 
 export let me = null;        // Firebase user đang đăng nhập
 export let clan = null;      // { code, name, rootUid, trees: {id: tên}, treeCount, ... }
@@ -138,13 +153,14 @@ export async function register(f) {
   busyAuth = true;
   let cred;
   try {
-    cred = await createUserWithEmailAndPassword(auth, f.email.trim(), f.password);
+    const acc = await createAuthAccount(auth, f.email, code, username, f.password, false);
+    cred = acc.cred;
     const uid = cred.user.uid, b = writeBatch(db);
     b.set(doc(db, 'clans', code), { name: f.clanName.trim(), rootUid: uid, contact: f.name.trim(), phone: f.phone.trim(), email: f.email.trim(),
       treeCount: 0, trees: {}, createdAt: serverTimestamp() });
     b.set(doc(db, 'clans', code, 'users', uid), { role: 'root', username, name: f.name.trim(), phone: f.phone.trim(), email: f.email.trim(),
-      title: 'Quản trị dòng họ', active: true, trees: {}, createdAt: serverTimestamp() });
-    b.set(doc(db, 'logins', `${code}_${username}`), { clan: code, username, uid, role: 'root', authEmail: f.email.trim(), hasEmail: true });
+      title: 'Quản trị dòng họ', active: true, trees: {}, authEmail: acc.authEmail, mailMode: acc.mailMode, createdAt: serverTimestamp() });
+    b.set(doc(db, 'logins', `${code}_${username}`), { clan: code, username, uid, role: 'root', authEmail: acc.authEmail, hasEmail: true });
     try { await b.commit(); }
     catch (e) { await cred.user.delete().catch(() => {}); throw String(e.code).includes('permission') ? new Error('Mã dòng họ này đã được đăng ký.') : e; }
     localStorage.setItem('clan', code);
@@ -229,14 +245,14 @@ export async function createUser(f) {
   const sa = initializeAuth(sec, { persistence: inMemoryPersistence });
   if (isEmu) connectAuthEmulator(sa, 'http://127.0.0.1:9099', { disableWarnings: true });
   try {
-    const cred = await createUserWithEmailAndPassword(sa, email || synthEmail(username, clan.code), f.password);
-    const uid = cred.user.uid, b = writeBatch(db), trees = f.trees || {};
+    const { cred, authEmail, mailMode } = await createAuthAccount(sa, email, clan.code, username, f.password);
+    const uid = cred.user.uid, b = writeBatch(db), trees = f.trees || {}, hasEmail = mailMode === 'own' || mailMode === 'alias';
     b.set(doc(db, 'clans', clan.code, 'users', uid), { role: 'user', username, name: f.name.trim(), phone: (f.phone || '').trim(), email,
-      title: (f.title || '').trim(), active: true, trees, createdAt: serverTimestamp(), createdBy: me.uid });
-    b.set(doc(db, 'logins', key), { clan: clan.code, username, uid, role: 'user', authEmail: email || synthEmail(username, clan.code), hasEmail: !!email });
+      authEmail, mailMode, title: (f.title || '').trim(), active: true, trees, createdAt: serverTimestamp(), createdBy: me.uid });
+    b.set(doc(db, 'logins', key), { clan: clan.code, username, uid, role: 'user', authEmail, hasEmail });
     applyTreeRoles(b, uid, f.name.trim(), trees, {}, true);
     try { await b.commit(); } catch (e) { await cred.user.delete().catch(() => {}); throw e; }
-    return uid;
+    return { uid, authEmail, mailMode, hasEmail };
   } finally { await signOut(sa).catch(() => {}); await deleteApp(sec).catch(() => {}); }
 }
 /** Root sửa người dùng: thông tin, quyền từng gia phả, bật / tắt */
