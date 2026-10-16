@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792144638477';
-import * as D from './data.js?v=1792144638477';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792144638477';
-import { makeKin, DIALECTS } from './kin.js?v=1792144638477';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792144638477';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792145118488';
+import * as D from './data.js?v=1792145118488';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792145118488';
+import { makeKin, DIALECTS } from './kin.js?v=1792145118488';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792145118488';
 
-const APP_VER = '16/10 16:57';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 17:05';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1728,28 +1728,46 @@ function bindCollectCards(m, list, rerender) {
 }
 
 // ======================= Nhiều hơn (giống ech-client: header xanh + lưới chức năng theo nhóm) =======================
+/** Mô tả + màu icon cho từng mục ở trang Nhiều hơn */
+const MORE_INFO = {
+  props: ['Thông tin nhập hộ, đề xuất sửa chờ duyệt', '#f59e0b'], log: ['Ai đã thêm, sửa, xóa gì', '#64748b'],
+  users: ['Tạo tài khoản, phân quyền, gắn người', '#7c3aed'], trees: ['Gia phả của dòng họ, chia sẻ, được chia sẻ', '#0891b2'],
+};
 function renderMore(m) {
   const a = D.account, groups = {};
-  for (const x of navOk().slice(4)) (groups[x.g || 'Gia phả'] ||= []).push(x);
-  const cards = (arr) => `<div class="mgrid">${arr.map((x) => `<button data-go="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span></button>`).join('')}</div>`;
-  m.innerHTML = `<div class="morehead"><div class="mav">${esc(initials(a.name || a.username))}</div>
-      <div class="mi"><small>Xin chào!</small><b>${esc(a.name || a.username)}</b><span class="rbadge">${D.isRoot() ? 'Quản trị dòng họ' : esc(a.title || (S.tree ? ROLE[S.role] : 'Người dùng'))}</span></div>
-      <button class="mout" id="mOut" title="Đăng xuất"><i class="fa-solid fa-right-from-bracket"></i></button></div>
+  for (const x of navOk().slice(4)) (groups[x.g || 'Gia phả'] ||= []).push({ go: x.k, ic: x.ic, n: x.n, d: (MORE_INFO[x.k] || [])[0], c: (MORE_INFO[x.k] || [])[1], badge: x.k === 'props' });
+  if (D.isRoot()) (groups['Quản trị'] ||= []).push({ act: 'clan', ic: 'fa-landmark', n: 'Thông tin dòng họ', d: 'Tên, người liên hệ, mã dòng họ', c: '#b45309' });
+  groups['Tài khoản'] = [
+    { act: 'me', ic: 'fa-id-card', n: 'Thông tin tài khoản', d: 'Họ tên, số điện thoại', c: '#0070f4' },
+    { act: 'pw', ic: 'fa-key', n: 'Đổi mật khẩu', d: 'Nên đổi sau lần đăng nhập đầu', c: '#059669' },
+    { act: 'push', ic: 'fa-bell', n: 'Thông báo', d: 'Nhắc ngày giỗ, sinh nhật, chờ duyệt', c: '#dc2626' },
+  ];
+  groups['Ứng dụng'] = [
+    { act: 'theme', ic: 'fa-sliders', n: 'Giao diện', d: 'Cỡ chữ, sáng / tối, cách gọi theo miền', c: '#db2777' },
+    { act: 'scan', ic: 'fa-qrcode', n: 'Quét mã QR', d: 'Nhận chia sẻ, liên kết hồ sơ', c: '#0f766e' },
+    { install: 1, ic: 'fa-download', n: 'Cài ứng dụng', d: 'Mở nhanh từ màn hình chính', c: '#4f46e5' },
+  ];
+  const row = (x) => `<button class="mrow" ${x.go ? `data-go="${x.go}"` : x.install ? `data-install ${canInstall() ? '' : 'hidden'}` : `data-act="${x.act}"`}>
+      <i class="fa-solid ${x.ic}" style="--ic:${x.c || '#0070f4'}"></i><span class="mt"><b>${esc(x.n)}</b>${x.d ? `<small>${esc(x.d)}</small>` : ''}</span>
+      ${x.badge ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}<i class="fa-solid fa-chevron-right mchev"></i></button>`;
+  const role = D.isRoot() ? 'Quản trị dòng họ' : a.title || (S.tree ? ROLE[S.role] : 'Người dùng');
+  const meP = myMe() && byId(myMe());
+  m.innerHTML = `<div class="morehead"></div>
     <div class="moresheet">
-      ${Object.entries(groups).map(([g, arr]) => `<div class="msec">${esc(g)}</div>${cards(arr)}`).join('')}
-      <div class="msec">Tài khoản</div>
-      <div class="mgrid">
-        <button data-act="push"><i class="fa-solid fa-bell"></i><span>Thông báo</span></button>
-        <button data-act="scan"><i class="fa-solid fa-qrcode"></i><span>Quét mã QR</span></button>
-        <button data-act="me"><i class="fa-solid fa-id-card"></i><span>Thông tin tài khoản</span></button>
-        <button data-act="pw"><i class="fa-solid fa-key"></i><span>Đổi mật khẩu</span></button>
-        <button data-act="theme"><i class="fa-solid fa-sliders"></i><span>Giao diện</span></button>
-        <button data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i><span>Cài ứng dụng</span></button>
-        ${D.isRoot() ? '<button data-act="clan"><i class="fa-solid fa-landmark"></i><span>Thông tin dòng họ</span></button>' : ''}
+      <div class="mcard">
+        <div class="mav">${esc(initials(a.name || a.username))}</div>
+        <div class="mi"><b>${esc(a.name || a.username)}</b><small>@${esc(a.username)} · ${esc(D.clan.name || D.clan.code)}</small>
+          <span class="rbadge">${D.isRoot() ? '<i class="fa-solid fa-crown"></i> ' : ''}${esc(role)}</span>${meP ? `<span class="rbadge me"><i class="fa-solid fa-location-dot"></i> ${esc(pname(meP))} · ${esc(S.A.label(meP.id))}</span>` : ''}</div>
+        <button class="abtn sm" data-act="me2" title="Sửa thông tin tài khoản"><i class="fa-solid fa-pen"></i></button>
       </div>
-      <p class="note" style="text-align:center">Dòng họ <b>${esc(D.clan.name || '')}</b> · mã <b>${esc(D.clan.code)}</b> · đăng nhập <b>${esc(a.username)}</b></p>
+      <div class="mcols">
+        ${Object.entries(groups).map(([g, arr]) => `<section><div class="msec">${esc(g)}</div><div class="mlist">${arr.map(row).join('')}</div></section>`).join('')}
+        <section><div class="mlist"><button class="mrow out" id="mOut"><i class="fa-solid fa-right-from-bracket" style="--ic:#dc2626"></i><span class="mt"><b>Đăng xuất</b><small>Máy vẫn nhớ tài khoản, lần sau chỉ cần mật khẩu</small></span></button></div></section>
+      </div>
+      <p class="note" style="text-align:center;margin-top:16px">Mã dòng họ <b>${esc(D.clan.code)}</b> · Phiên bản ${APP_VER}</p>
     </div>`;
   m.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => go(el.dataset.go)));
+  m.querySelector('[data-act=me2]').onclick = editMe;
   m.querySelector('[data-act=me]').onclick = editMe;
   m.querySelector('[data-act=scan]').onclick = () => scanAndHandle();
   m.querySelector('[data-act=push]').onclick = pushSettings;
