@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792139224875';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792140520303';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -258,7 +258,7 @@ export async function createUser(f) {
 /** Root sửa người dùng: thông tin, quyền từng gia phả, bật / tắt */
 export async function updateUser(u, f) {
   const b = writeBatch(db), active = f.active !== false, trees = f.trees || {};
-  b.update(doc(db, 'clans', clan.code, 'users', u.uid), { name: f.name.trim(), phone: (f.phone || '').trim(), title: (f.title || '').trim(), active, trees });
+  b.update(doc(db, 'clans', clan.code, 'users', u.uid), { name: f.name.trim(), phone: (f.phone || '').trim(), title: (f.title || '').trim(), active, trees, ...(f.me ? { me: f.me } : {}) });
   applyTreeRoles(b, u.uid, f.name.trim(), trees, u.trees || {}, active);
   await b.commit();
 }
@@ -372,10 +372,18 @@ export async function deletePerson(treeId, p, all) {
 }
 
 // ======================= Đề xuất sửa (thành viên chỉ xem) =======================
-export async function addProposal(treeId, { personId, personName, text }) {
+export async function addProposal(treeId, { personId, personName, text, kind }) {
   const ref = doc(collection(db, 'trees', treeId, 'proposals'));
-  await setDoc(ref, { by: me.uid, byName: myName(), at: serverTimestamp(), personId: personId || '', personName: personName || '', text, status: 'open' });
+  await setDoc(ref, { by: me.uid, byName: myName(), at: serverTimestamp(), personId: personId || '', personName: personName || '', text, status: 'open',
+    ...(kind === 'claim' ? { kind, byUser: account.username } : {}) });
 }
+/** Quản trị gắn tài khoản (uid) với 1 người trong gia phả (personId rỗng = bỏ gắn) */
+export async function setUserPerson(uid, treeId, personId) {
+  await updateDoc(doc(db, 'clans', clan.code, 'users', uid), { [`me.${treeId}`]: personId || deleteField() });
+  if (uid === me.uid) { account.me = { ...(account.me || {}) }; if (personId) account.me[treeId] = personId; else delete account.me[treeId]; }
+}
+/** Người trong gia phả mà tài khoản đang đăng nhập được gắn với */
+export const myPersonId = (treeId) => ((account && account.me) || {})[treeId] || '';
 export async function listProposals(treeId, onlyOpen = true) {
   const col = collection(db, 'trees', treeId, 'proposals');
   const s = await getDocs(onlyOpen ? query(col, where('status', '==', 'open')) : query(col, orderBy('at', 'desc'), limit(50)));

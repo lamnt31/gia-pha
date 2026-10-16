@@ -1,10 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792139224875';
-import * as D from './data.js?v=1792139224875';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792139224875';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792139224875';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792140520303';
+import * as D from './data.js?v=1792140520303';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792140520303';
+import { makeKin, DIALECTS } from './kin.js?v=1792140520303';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792140520303';
 
-const APP_VER = '16/10 15:27';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 15:48';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -422,7 +423,8 @@ async function openTree(id, first) {
   busy();
   store('lastTree', id);
   S.persons = []; S.A = null; S.sel = null; S.q = ''; S.pz = null; S.firstFit = true; S.propCount = 0;
-  S.collapsed = new Set(store('col_' + id) || []); S.links = new Map();
+  S.collapsed = new Set(store('col_' + id) || []); S.links = new Map(); S.users = null; KIN = null;
+  refreshUsers();
   if (first) S.tab = store('tab') || 'home';
   document.title = S.tree.name + ' – Gia phả';
   shell();
@@ -521,13 +523,15 @@ function renderTreeTab(fromData) {
       <div class="tsearch"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="tq" placeholder="Tìm người trên cây…" autocomplete="off"><button class="clr" id="tqx" hidden><i class="fa-solid fa-xmark"></i></button></div><div class="panel sres" id="tres" hidden></div></div>
       <div class="blegend" id="blegend"></div>
       <div class="tools"><button class="ibtn" id="zin" title="Phóng to"><i class="fa-solid fa-plus"></i></button><button class="ibtn" id="zout" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
-      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEdit() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
+      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zme" title="Về tôi" hidden><i class="fa-solid fa-location-crosshairs"></i></button><button class="ibtn" id="zkin" title="Cách gọi với tôi (bật / tắt)" hidden><i class="fa-solid fa-people-arrows"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEdit() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
     S.pz = panZoom($('tbox'), $('tsvg'), {
       onTap: (id) => { S.sel = id; drawTree(); showPerson(id); },
       onToggle: (id) => { S.collapsed.has(id) ? S.collapsed.delete(id) : S.collapsed.add(id); store('col_' + S.tree.id, [...S.collapsed]); drawTree(); },
     });
     $('zcol').onclick = () => { store('branchColor', store('branchColor') === false); drawTree(); toast(store('branchColor') === false ? 'Đã tắt màu theo nhánh' : 'Đã bật màu theo nhánh'); };
     $('zgen').onclick = () => showToGen();
+    $('zme').onclick = () => { const me = myMe(); if (me) jumpTo(me, false); };
+    $('zkin').onclick = () => { store('kinOn', kinOn() ? false : null); drawTree(); toast(kinOn() ? 'Hiện cách gọi với bạn trên cây' : 'Đã tắt cách gọi trên cây'); };
     $('zin').onclick = () => S.pz.zoom(1.25); $('zout').onclick = () => S.pz.zoom(0.8); $('zfit').onclick = () => S.pz.fit();
     if ($('zadd')) $('zadd').onclick = () => personForm(null, { mode: 'first' });
     const q = $('tq'), res = $('tres');
@@ -542,7 +546,8 @@ function renderTreeTab(fromData) {
     $('tqx').onclick = () => { q.value = ''; q.oninput(); q.focus(); };
   }
   drawTree();
-  if (S.firstFit) { S.firstFit = false; requestAnimationFrame(() => S.pz.fit()); }
+  // lần đầu mở cây: có "tôi" → tới đúng ô của mình; không thì xem toàn bộ
+  if (S.firstFit) { S.firstFit = false; const me = myMe(); requestAnimationFrame(() => (me ? jumpTo(me, false) : S.pz.fit())); }
 }
 /** Màu nhánh của 1 người (người trong họ theo nhánh; vợ/chồng theo nhánh người phối ngẫu). Chưa tới đời chia nhánh → '' */
 function branchOf(p) {
@@ -572,12 +577,26 @@ async function showToGen() {
   drawTree(); requestAnimationFrame(() => S.pz.fit());
   toast(v === 'all' ? 'Đã mở tất cả các đời' : `Đang hiện đến ${glab(Number(v)).toLowerCase()} – bấm “+” dưới ô để mở riêng nhánh`);
 }
+// ---------- "Tôi" trong gia phả + cách gọi họ hàng ----------
+const dialect = () => (DIALECTS[store('dialect')] ? store('dialect') : 'bac');
+const lcf = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+/** Người trong gia phả gắn với tài khoản đang đăng nhập (nếu còn trong cây) */
+function myMe() { const id = S.tree && D.myPersonId(S.tree.id); return id && S.A && S.A.byId.has(id) ? id : ''; }
+let KIN = null;   // { A, me, dia, fn } – tính lại khi cây / người / vùng miền đổi
+function kinOf(id) {
+  const me = myMe(); if (!me) return null;
+  if (!KIN || KIN.A !== S.A || KIN.me !== me || KIN.dia !== dialect()) { const fn = makeKin(S.A, me, dialect()), memo = new Map(); KIN = { A: S.A, me, dia: dialect(), fn: (x) => (memo.has(x) ? memo.get(x) : (memo.set(x, fn(x)), memo.get(x))) }; }
+  return KIN.fn(id);
+}
+const kinOn = () => store('kinOn') !== false;
 let LAYOUT = null;
 function drawTree() {
   if (!S.A || !$('tsvg')) return;
   LAYOUT = layout(S.A, S.collapsed);
   const colorOn = store('branchColor') !== false;
-  renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []), colorOn);
+  const me = myMe();
+  renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []), colorOn, me && kinOn() ? kinOf : null, me);
+  if ($('zme')) { $('zme').hidden = !me; $('zkin').hidden = !me; $('zkin').classList.toggle('on', kinOn()); }
   // chú thích màu nhánh: bấm để tới gốc nhánh
   const lg = $('blegend');
   if (lg) {
@@ -651,6 +670,8 @@ function showPerson(id, refresh) {
       <div class="pg">${esc(A.label(id))}${A.spouseIn.has(id) ? (p.gender === 'f' ? ' · con dâu' : ' · con rể') : ''}${S.tree.anchorId === id ? ' · <i class="fa-solid fa-flag"></i> mốc đời 1' : ''}</div>
       <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
     <div class="rows">
+      ${(() => { const k = kinOf(id); return k && k.t !== 'Tôi' ? row('fa-people-arrows', 'Quan hệ với bạn', `${esc(k.t)}${k.hint ? `<small>${esc(k.hint)}</small>` : ''}`) : k ? row('fa-user-check', 'Tài khoản', 'Đây là bạn') : ''; })()}
+      ${(() => { const u = linkedUser(id); return u && u.uid !== D.account.uid ? row('fa-user-check', 'Tài khoản', `${esc(u.name || u.username)} <small>@${esc(u.username)}</small>`) : ''; })()}
       ${row('fa-venus-mars', 'Giới tính', p.gender === 'f' ? 'Nữ' : 'Nam')}
       ${row('fa-cake-candles', 'Sinh', p.birthSolar || p.birthLunar ? `${esc(p.birthSolar || '')}${!isDead(p) && ageOf(p) !== null ? ` · ${ageOf(p)} tuổi` : ''}${bl ? `<small>Âm lịch: ${formatLunar(bl)}</small>` : p.birthLunar ? `<small>Âm lịch: ${esc(p.birthLunar)}</small>` : ''}` : '')}
       ${isDead(p) ? row('fa-dove', 'Mất', `${esc(p.deathSolar || '') || (p.deathLunar ? '' : 'Đã mất')}${ageOf(p) !== null ? ` · hưởng thọ ${ageOf(p)} tuổi` : ''}${dl ? `<small>Âm lịch: ${formatLunar(dl)}</small>` : p.deathLunar ? `<small>Âm lịch: ${esc(p.deathLunar)}</small>` : ''}`) : ''}
@@ -671,7 +692,8 @@ function showPerson(id, refresh) {
       <div class="r"><span>${p.gender === 'f' ? 'Chồng' : 'Vợ'}</span><b class="rel">${spouses.length ? relBtns(spouses) : '—'}</b></div>
       <div class="r"><span>Con (${kids.length})</span><b class="rel">${kids.length ? relBtns(kids) : '—'}</b></div>
     </div>
-    <div class="sacts"><button class="abtn full" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button></div>
+    <div class="sacts"><button class="abtn full" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button>
+      ${canClaim() && !linkedUser(id) ? `<button class="abtn full" data-a="claim"><i class="fa-solid fa-user-check"></i>Đây là tôi${D.isRoot() ? '' : ' (gửi quản trị xác nhận)'}</button>` : ''}</div>
     ${canEdit() ? `<div class="sacts">
       <button class="abtn blue full" data-a="edit"><i class="fa-solid fa-pen"></i>Sửa thông tin</button>
       <button class="abtn" data-a="child"><i class="fa-solid fa-child"></i>Thêm con</button>
@@ -695,7 +717,25 @@ function showPerson(id, refresh) {
   bindLinks(p);
 }
 
+/** Tài khoản đã gắn với người này (chỉ quản trị biết – có danh sách người dùng) */
+function linkedUser(pid) { return S.tree && (S.users || []).find((u) => (u.me || {})[S.tree.id] === pid) || null; }
+/** Chưa gắn với ai trong gia phả này, gia phả của dòng họ mình, không phải chỉ xem */
+const canClaim = () => S.tree && S.role !== 'viewer' && !myMe() && !(D.myTrees().find((t) => t.id === S.tree.id) || {}).shared;
+async function claimMe(p) {
+  if (D.isRoot()) {
+    if (!await ask({ title: 'Đây là tôi', msg: `Gắn tài khoản của bạn với <b>${esc(pname(p))}</b>? Cây sẽ tự tới ô này và hiện cách gọi họ hàng theo bạn.`, ok: 'Gắn' })) return;
+    try { await D.setUserPerson(D.account.uid, S.tree.id, p.id); toast('Đã gắn – cây hiện cách gọi theo bạn'); refreshUsers(); closeSheet(true); KIN = null; if (S.tab === 'tree') { drawTree(); jumpTo(p.id, false); } } catch (e) { toast(D.errMsg(e), 4000); }
+    return;
+  }
+  if (store('claim_' + S.tree.id) === p.id) return toast('Bạn đã gửi yêu cầu này – chờ quản trị dòng họ xác nhận', 4000);
+  if (!await ask({ title: 'Đây là tôi', msg: `Gửi quản trị dòng họ xác nhận tài khoản <b>@${esc(D.account.username)}</b> là <b>${esc(pname(p))}</b> (${esc(S.A.label(p.id))}). Sau khi xác nhận, cây sẽ tự tới ô của bạn và hiện cách gọi họ hàng.`, ok: 'Gửi' })) return;
+  try { await D.addProposal(S.tree.id, { personId: p.id, personName: pname(p), kind: 'claim', text: `Xác nhận tài khoản @${D.account.username} (${D.account.name || ''}) là ${pname(p)}` }); store('claim_' + S.tree.id, p.id); toast('Đã gửi – chờ quản trị xác nhận', 4000); }
+  catch (e) { toast(D.errMsg(e), 4000); }
+}
+/** Quản trị: tải danh sách người dùng (để biết ai đã gắn với ai) */
+function refreshUsers() { if (D.isRoot()) D.listUsers().then((l) => { S.users = l; if (S.openPerson && sheetOpen() && !S.formOpen) showPerson(S.openPerson, true); }).catch(() => {}); }
 async function personAction(p, a) {
+  if (a === 'claim') return claimMe(p);
   if (a === 'edit') return personForm(p, { mode: 'edit' });
   if (a === 'child') return personForm(null, { mode: 'child', of: p });
   if (a === 'spouse') return personForm(null, { mode: 'spouse', of: p });
@@ -1679,6 +1719,9 @@ function uiSettings() {
       <div class="preview">Xem trước: <b style="color:var(--text)">Nguyễn Văn Tổ</b> · Đời 1 · giỗ 16/2 âm lịch</div>
       <div class="cfgrow"><div><b>Chế độ màu</b><small>Sáng hoặc tối</small></div>
         <div class="seg" style="min-width:150px"><label><input type="radio" name="thm" value="light" ${dark() ? '' : 'checked'}>Sáng</label><label><input type="radio" name="thm" value="dark" ${dark() ? 'checked' : ''}>Tối</label></div></div>
+      <div class="cfgrow"><div><b>Cách gọi họ hàng</b><small>Trên cây và hồ sơ (bác, chú, cô, cậu, dì…)</small></div>
+        <div class="seg" style="min-width:210px">${Object.entries(DIALECTS).map(([k, v]) => `<label><input type="radio" name="dia" value="${k}" ${dialect() === k ? 'checked' : ''}>${v.name.replace('Miền ', '')}</label>`).join('')}</div></div>
+      <div class="preview" id="diaPv"></div>
     </div>
     <div class="sacts"><button type="button" class="abtn full" id="uiReset"><i class="fa-solid fa-rotate-left"></i>Về mặc định</button></div>`);
   const show = (n) => { $('fzVal').textContent = n + 'px'; $('fzMinus').disabled = n <= FONT_MIN; $('fzPlus').disabled = n >= FONT_MAX; };
@@ -1686,7 +1729,10 @@ function uiSettings() {
   $('fzMinus').onclick = () => show(setFont(fontSize() - 1));
   $('fzPlus').onclick = () => show(setFont(fontSize() + 1));
   $('sheet').querySelectorAll('input[name=thm]').forEach((r) => (r.onchange = () => applyTheme(r.value)));
-  $('uiReset').onclick = () => { show(setFont(FONT_DEF)); applyTheme('light'); $('sheet').querySelector('input[name=thm][value=light]').checked = true; };
+  const dpv = () => { const W = DIALECTS[dialect()]; $('diaPv').innerHTML = `Ví dụ: <b style="color:var(--text)">${W.father}, ${W.mother}</b> · anh trai của ${lcf(W.father)}: <b style="color:var(--text)">${W.pUo}</b> · em trai: <b style="color:var(--text)">${W.pUy}</b> · em gái của ${lcf(W.father)}: <b style="color:var(--text)">${W.pAy}</b> · anh/em của ${lcf(W.mother)}: <b style="color:var(--text)">${W.mUy}</b> · chị/em của ${lcf(W.mother)}: <b style="color:var(--text)">${W.mAy}</b>`; };
+  dpv();
+  $('sheet').querySelectorAll('input[name=dia]').forEach((r) => (r.onchange = () => { store('dialect', r.value === 'bac' ? null : r.value); KIN = null; dpv(); if (S.tab === 'tree') drawTree(); }));
+  $('uiReset').onclick = () => { show(setFont(FONT_DEF)); applyTheme('light'); $('sheet').querySelector('input[name=thm][value=light]').checked = true; store('dialect', null); KIN = null; $('sheet').querySelector('input[name=dia][value=bac]').checked = true; dpv(); };
 }
 
 async function editMe() {
@@ -1791,6 +1837,7 @@ async function renderUsers(m) {
   let list;
   try { list = await D.listUsers(); } catch (e) { m.innerHTML = `<div class="page"><div class="empty">${esc(D.errMsg(e))}</div></div>`; return; }
   if (S.tab !== 'users') return;
+  S.users = list;
   list.sort((a, b) => (a.role === 'root' ? -1 : b.role === 'root' ? 1 : 0) || (b.active !== false) - (a.active !== false) || String(a.name).localeCompare(String(b.name), 'vi'));
   const trees = D.clan.trees || {};
   S.uq = S.uq || '';
@@ -1805,7 +1852,7 @@ async function renderUsers(m) {
     $('ures').innerHTML = rows.map((u) => {
       const tr = u.role === 'root' ? 'Toàn quyền mọi gia phả' : Object.entries(u.trees || {}).map(([t, r]) => `${trees[t] || '?'}: ${r === 'editor' ? 'biên tập' : 'xem'}`).join(' · ') || 'Chưa cấp quyền gia phả nào';
       return `<div class="item" data-u="${esc(u.uid)}"><div class="ic ${u.role === 'root' ? 'warn' : u.active === false ? 'bad' : 'info'}"><i class="fa-solid fa-${u.role === 'root' ? 'crown' : 'user'}"></i></div>
-        <div class="t"><b>${esc(u.name || u.username)}</b><span>@${esc(u.username)}${u.title ? ' · ' + esc(u.title) : ''}${u.phone ? ' · ' + esc(u.phone) : ''}</span>${u.email && u.role !== 'root' && u.mailMode === 'contact' ? `<span><i class="fa-regular fa-envelope"></i> ${esc(u.email)} · chỉ để liên hệ</span>` : ''}${u.email && u.role !== 'root' && u.mailMode !== 'contact' ? `<span>${u.emailOk ? '<i class="fa-solid fa-circle-check" style="color:var(--ok)"></i>' : '<i class="fa-regular fa-clock" style="color:var(--warn,#d97706)"></i>'} ${esc(u.email)} · ${u.emailOk ? 'email đã xác nhận' : 'chưa xác nhận (chưa bấm link trong email)'}</span>` : ''}<span>${esc(tr)}</span></div>
+        <div class="t"><b>${esc(u.name || u.username)}</b><span>@${esc(u.username)}${u.title ? ' · ' + esc(u.title) : ''}${u.phone ? ' · ' + esc(u.phone) : ''}</span>${u.email && u.role !== 'root' && u.mailMode === 'contact' ? `<span><i class="fa-regular fa-envelope"></i> ${esc(u.email)} · chỉ để liên hệ</span>` : ''}${u.email && u.role !== 'root' && u.mailMode !== 'contact' ? `<span>${u.emailOk ? '<i class="fa-solid fa-circle-check" style="color:var(--ok)"></i>' : '<i class="fa-regular fa-clock" style="color:var(--warn,#d97706)"></i>'} ${esc(u.email)} · ${u.emailOk ? 'email đã xác nhận' : 'chưa xác nhận (chưa bấm link trong email)'}</span>` : ''}<span>${esc(tr)}</span>${(() => { const p = S.tree && byId((u.me || {})[S.tree.id]); return p ? `<span><i class="fa-solid fa-user-check"></i> Là ${esc(pname(p))} · ${esc(S.A.label(p.id))}</span>` : ''; })()}</div>
         <span class="when ${u.active === false ? 'bad' : 'ok'}">${u.active === false ? 'Tắt' : 'Hoạt động'}</span></div>`;
     }).join('') || '<div class="empty" style="padding:20px">Không tìm thấy</div>';
     $('ures').querySelectorAll('[data-u]').forEach((el) => (el.onclick = () => { const u = list.find((x) => x.uid === el.dataset.u); if (u.role === 'root') editMe(); else userForm(u); }));
@@ -1835,12 +1882,34 @@ function userForm(u) {
       ${d.email && d.mailMode !== 'contact' ? '<button type="button" class="abtn full" id="uMail"><i class="fa-solid fa-envelope"></i>Gửi email đặt mật khẩu</button>' : ''}`}
     </div>
     <div class="fsec"><i class="fa-solid fa-shield-halved"></i>Quyền theo gia phả</div>
-    <div class="rows">${Object.entries(trees).map(([t, n]) => `<div class="r"><span style="color:var(--text);flex:1">${esc(n)}</span><select class="rsel" data-tr="${esc(t)}" aria-label="Quyền trên: ${esc(n)}">${Object.entries(TROLE).map(([k, l]) => `<option value="${k}" ${(d.trees || {})[t] === k || (!k && !(d.trees || {})[t]) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')
+    <div class="rows">${Object.entries(trees).map(([t, n]) => `<div class="r"><span style="color:var(--text);flex:1">${esc(n)}</span><select class="rsel" data-tr="${esc(t)}" aria-label="Quyền trên: ${esc(n)}">${Object.entries(TROLE).map(([k, l]) => `<option value="${k}" ${(d.trees || {})[t] === k || (!k && !(d.trees || {})[t]) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      ${S.tree && S.tree.id === t && S.A ? `<div class="r"><span style="flex:1"><i class="fa-solid fa-user-check"></i> Là ai trong gia phả</span><button type="button" class="abtn sm" data-me="${esc(t)}" id="uMe"></button></div>` : ''}`).join('')
       || '<div class="r"><span>Chưa có gia phả nào</span></div>'}</div>
     <div class="fbar"><button type="button" class="abtn" id="ucancel">Hủy</button><button class="abtn blue"><i class="fa-solid fa-check"></i>${isNew ? 'Tạo' : 'Lưu'}</button></div>
     </form>`;
   openSheet(html);
   $('ucancel').onclick = () => closeSheet();
+  // gắn tài khoản với 1 người trong gia phả đang mở
+  const meSel = { ...(d.me || {}) }, tId = S.tree && S.tree.id;
+  const meLbl = () => { const p = byId(meSel[tId]); $('uMe').innerHTML = p ? `${esc(pname(p))} <small style="color:var(--muted)">${esc(S.A.label(p.id))}</small>` : '<span style="color:var(--muted)">Chưa gắn – chọn</span>'; };
+  if ($('uMe')) {
+    meLbl();
+    $('uMe').onclick = async () => {
+      const taken = new Map((S.users || []).filter((x) => !u || x.uid !== u.uid).map((x) => [(x.me || {})[tId], x]).filter(([k]) => k));
+      const opts = [['', '— Chưa gắn —'], ...[...S.persons].sort(byGen).map((x) => [x.id, `${pname(x)} · ${S.A.label(x.id)}${relText(x) ? ' · ' + relText(x) : ''}${taken.has(x.id) ? ' · đang gắn @' + taken.get(x.id).username : ''}`])];
+      const v = await pick({ title: 'Là ai trong gia phả', options: opts, value: meSel[tId] || '' });
+      if (v === null) return;
+      if (v && taken.has(v) && !await ask({ title: 'Đã gắn tài khoản khác', msg: `${esc(pname(byId(v)))} đang gắn với <b>@${esc(taken.get(v).username)}</b>. Chuyển sang tài khoản này (bỏ gắn @${esc(taken.get(v).username)})?`, ok: 'Chuyển' })) return;
+      if (v) meSel[tId] = v; else delete meSel[tId];
+      meLbl();
+    };
+  }
+  const saveMe = async (uid) => {
+    if (!tId || !$('uMe') || (meSel[tId] || '') === ((d.me || {})[tId] || '')) return;
+    const other = (S.users || []).find((x) => x.uid !== uid && meSel[tId] && (x.me || {})[tId] === meSel[tId]);
+    if (other) await D.setUserPerson(other.uid, tId, '');
+    await D.setUserPerson(uid, tId, meSel[tId] || '');
+  };
   if ($('u_email')) $('u_email').oninput = () => ($('u_inviteRow').hidden = !/^\S+@\S+\.\S+$/.test($('u_email').value.trim()));
   if ($('uMail')) $('uMail').onclick = async () => {
     if (!await ask({ title: 'Gửi email đặt mật khẩu', msg: `Gửi email tới <b>${esc(d.email)}</b>. ${esc(d.name || d.username)} bấm link trong email để đặt mật khẩu mới (mật khẩu cũ sẽ không dùng được nữa sau khi đặt), rồi vào thẳng màn đăng nhập đã điền sẵn tài khoản.`, ok: 'Gửi' })) return;
@@ -1862,6 +1931,7 @@ function userForm(u) {
     try {
       if (isNew) {
         const cu = await D.createUser(f);
+        await saveMe(cu.uid).catch((e) => toast('Tạo xong nhưng chưa gắn được người: ' + D.errMsg(e), 5000));
         const invite = cu.hasEmail && $('u_invite') && $('u_invite').checked && !$('u_inviteRow').hidden;
         let mailed = false;
         if (invite) { busy('Đang gửi email mời…'); try { await D.sendSetPasswordEmail(cu.authEmail, loginUrl(f.username)); mailed = true; } catch (e) { toast('Tạo xong nhưng chưa gửi được email: ' + D.errMsg(e), 5000); } }
@@ -1870,7 +1940,8 @@ function userForm(u) {
         if (mailed) await ask({ title: 'Đã tạo & gửi email mời', msg: `Đã gửi email tới <b>${esc(f.email)}</b>. <b>${esc(f.name)}</b> bấm link trong email để <b>tự đặt mật khẩu</b>, rồi bấm <b>Tiếp tục</b> để vào màn đăng nhập đã điền sẵn tài khoản – bạn không cần gửi mật khẩu.<br><br><small>Không thấy email? Xem trong thư mục Spam / Quảng cáo. Hoặc gửi link: ${esc(loginUrl(f.username))}</small>`, ok: 'Đóng' });
         else await ask({ title: 'Đã tạo người dùng', msg: `Gửi thông tin đăng nhập cho <b>${esc(f.name)}</b>:<br>Link: <b>${esc(loginUrl(f.username))}</b> (mở là điền sẵn tài khoản)<br>Mã dòng họ: <b>${esc(D.clan.code)}</b><br>Tên đăng nhập: <b>${esc(f.username)}</b><br>Mật khẩu: <b>${esc(f.password)}</b>`, ok: 'Copy & đóng' })
           .then((ok) => ok && navigator.clipboard && navigator.clipboard.writeText(`Gia phả ${D.clan.name || D.clan.code} – bấm link, nhập mật khẩu là vào:\n${loginUrl(f.username)}\nMã dòng họ: ${D.clan.code}\nTên đăng nhập: ${f.username}\nMật khẩu: ${f.password}`).then(() => toast('Đã copy')).catch(() => {}));
-      } else { await D.updateUser(u, f); busy(); closeSheet(true); toast('Đã lưu'); }
+      } else { await D.updateUser(u, f); await saveMe(u.uid); busy(); closeSheet(true); toast('Đã lưu'); }
+      refreshUsers(); KIN = null;
       renderUsers($('main'));
     } catch (er) { busy(); toast(D.errMsg(er), 5000); }
   };
@@ -1888,12 +1959,24 @@ async function renderProps(m) {
     <div class="panel">${list.length ? list.map((x) => `<div class="item" style="align-items:flex-start;cursor:default"><div class="ic info"><i class="fa-solid fa-message"></i></div>
       <div class="t"><b>${esc(x.personName || 'Chung')}</b><span style="white-space:pre-wrap;color:var(--text)">${esc(x.text)}</span><span>${esc(x.byName)} · ${esc(ago(x.at))}</span>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${x.personId && byId(x.personId) ? `<button class="abtn sm" data-open="${esc(x.personId)}"><i class="fa-solid fa-user"></i>Mở hồ sơ</button>` : ''}
-        <button class="abtn sm blue" data-ok="${esc(x.id)}"><i class="fa-solid fa-check"></i>Đã sửa</button><button class="abtn sm red" data-no="${esc(x.id)}">Từ chối</button></div></div></div>`).join('')
+        ${x.kind === 'claim' ? (D.isRoot() ? `<button class="abtn sm blue" data-claim="${esc(x.id)}"><i class="fa-solid fa-user-check"></i>Xác nhận & gắn</button>` : '<span class="note" style="margin:0">Chỉ quản trị dòng họ xác nhận được</span>')
+          : `<button class="abtn sm blue" data-ok="${esc(x.id)}"><i class="fa-solid fa-check"></i>Đã sửa</button>`}<button class="abtn sm red" data-no="${esc(x.id)}">Từ chối</button></div></div></div>`).join('')
       : '<div class="empty" style="padding:20px"><i class="fa-regular fa-circle-check"></i>Không có đề xuất nào</div>'}</div></div>`;
   m.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => showPerson(b.dataset.open)));
   bindCollectCards(m, cl, () => renderProps(m));
   const res = (id, st) => D.resolveProposal(S.tree.id, id, st).then(() => { toast('Đã xử lý'); renderProps(m); }).catch((e) => toast(D.errMsg(e), 4000));
   m.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => res(b.dataset.ok, 'done')));
+  m.querySelectorAll('[data-claim]').forEach((b) => (b.onclick = async () => {
+    const x = list.find((y) => y.id === b.dataset.claim), p = byId(x.personId);
+    if (!p) return toast('Người này không còn trong gia phả', 4000);
+    const users = await D.listUsers(), other = users.find((u) => u.uid !== x.by && (u.me || {})[S.tree.id] === p.id);
+    if (!await ask({ title: 'Xác nhận tài khoản', msg: `Gắn tài khoản <b>${esc(x.byName)}</b>${x.byUser ? ` (@${esc(x.byUser)})` : ''} với <b>${esc(pname(p))}</b> · ${esc(S.A.label(p.id))}?${other ? `<br><br><b style="color:var(--bad)">Lưu ý:</b> người này đang gắn với tài khoản <b>@${esc(other.username)}</b> – sẽ bỏ gắn tài khoản đó.` : ''}`, ok: 'Xác nhận & gắn' })) return;
+    try {
+      if (other) await D.setUserPerson(other.uid, S.tree.id, '');
+      await D.setUserPerson(x.by, S.tree.id, p.id); await D.resolveProposal(S.tree.id, x.id, 'done');
+      toast('Đã gắn tài khoản'); refreshUsers(); renderProps(m);
+    } catch (e) { toast(D.errMsg(e), 4000); }
+  }));
   m.querySelectorAll('[data-no]').forEach((b) => (b.onclick = () => res(b.dataset.no, 'rejected')));
 }
 

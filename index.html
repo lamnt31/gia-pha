@@ -346,6 +346,9 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
                     background: var(--card-solid); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
   .blegend i { width: 10px; height: 10px; border-radius: 50%; }
   .item.sub { padding-left: 34px; background: color-mix(in srgb, var(--ok, #16a34a) 5%, transparent); }   /* người mới thêm: thụt vào dưới người liên quan */
+  #tsvg .tn.me rect { stroke: #0070f4; stroke-width: 4; }   /* ô của "tôi" (thắng màu nhánh) */
+  #tsvg .tn.me .gen { fill: #0070f4; font-weight: 800; }
+  .ibtn.on { color: #0070f4; }
   .bdot {display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
   .item .t .rel { color: var(--muted); font-size: var(--fs-sm); }
   .blegend .bgen {background: #0070f4; color: #fff; border-color: #0070f4; position: sticky; left: 0; z-index: 1; }
@@ -441,6 +444,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792139224875"></script>
+<script type="module" src="js/app.js?v=1792140520303"></script>
 </body>
 </html>

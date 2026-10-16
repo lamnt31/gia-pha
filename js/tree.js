@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792139224875';
+import { esc } from './ui.js?v=1792140520303';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -183,17 +183,20 @@ function fit(t, maxW, px, minPx, w = 700) {
 /** Màu nam theo nhánh (nữ giữ màu hồng). Tránh xanh dương mặc định và hồng */
 export const BRANCH_COLORS = ['#059669', '#d97706', '#7c3aed', '#0891b2', '#b45309', '#65a30d', '#c026d3', '#0d9488', '#ea580c', '#4f46e5', '#a16207', '#be123c'];
 export const branchColor = (i) => BRANCH_COLORS[i % BRANCH_COLORS.length];
-export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranches = true) {
+export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranches = true, kin = null, meId = '') {
   const node = (n) => {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
     const nh = n.kind === 'blood' && A.noHeir(p.id), icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0);
     const bi = colorBranches && p.gender !== 'f' && n.kind === 'blood' ? A.branch.get(p.id) : undefined;
-    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${bi !== undefined ? 'br' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
+    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${bi !== undefined ? 'br' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''} ${p.id === meId ? 'me' : ''}`;
     const name = p.name || 'Chưa rõ tên';
     const x = p.photo ? 48 : 12, room = NW - x - 8;
     const [nm, nf] = fit(name, room - icons * 14, 13.5, 11.5);
     const spLabel = n.kind !== 'spouse' ? '' : p.gender === 'f' ? (n.count > 1 ? ' · vợ ' + (['cả', 'hai', 'ba', 'tư', 'năm', 'sáu'][n.idx] || n.idx + 1) : ' · vợ') : (n.count > 1 ? ' · chồng ' + (n.idx + 1) : ' · chồng');
-    const [gen] = fit(A.label(p.id) + spLabel, room, 10.5, 10.5, 600);
+    // có người "tôi" → thay nhãn vợ/chồng bằng cách gọi với tôi (vẫn giữ vợ cả / vợ hai khi nhiều vợ)
+    const k = kin && kin(p.id);
+    const kl = k ? ' · ' + k.t + (n.kind === 'spouse' && n.count > 1 ? ' (' + spLabel.replace(' · ', '') + ')' : '') : spLabel;
+    const [gen] = fit(A.label(p.id) + kl, room, 10.5, 9, 600);
     return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})"${bi !== undefined ? ` style="--bc:${branchColor(bi)}"` : ''}>
       <title>${esc(name)}</title>
       <rect width="${NW}" height="${NH}" rx="10"/>${dead ? '<g class="lotus"><title>Đã mất</title><circle cx="3" cy="3" r="10"/><text x="3" y="7" text-anchor="middle">&#xf5bb;</text></g>' : ''}
