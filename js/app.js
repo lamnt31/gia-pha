@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792137394822';
-import * as D from './data.js?v=1792137394822';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792137394822';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792137394822';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792138126241';
+import * as D from './data.js?v=1792138126241';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792138126241';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792138126241';
 
-const APP_VER = '16/10 14:56';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 15:08';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -120,6 +120,10 @@ initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trư�
 
 // ?collect=<mã>: người nhận link nhờ điền thông tin – không cần tài khoản, không vào app
 const COLLECT_CODE = new URLSearchParams(location.search).get('collect');
+// link đăng nhập ?c=<mã dòng họ>&u=<tên đăng nhập> → điền sẵn, chỉ cần nhập mật khẩu (không bao giờ gắn mật khẩu vào link)
+const LOGIN_HINT = (() => { const q = new URLSearchParams(location.search), c = (q.get('c') || '').trim().toLowerCase(), u = (q.get('u') || '').trim().toLowerCase(); return c && u ? { code: c, user: u } : null; })();
+const loginUrl = (user) => `${location.origin}${location.pathname}?c=${encodeURIComponent(D.clan.code)}&u=${encodeURIComponent(user)}`;
+const dropLoginHint = () => { const q = new URLSearchParams(location.search); if (!q.has('c') && !q.has('u')) return; q.delete('c'); q.delete('u'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); };
 if (COLLECT_CODE) renderCollect(COLLECT_CODE);
 else D.onUser(async (u, err) => {
   if (!u) {
@@ -204,7 +208,12 @@ const greet = () => { const h = new Date().getHours(); return h < 11 ? 'Chào bu
 
 /** Màn đăng nhập. Có tài khoản đã lưu → chỉ hỏi mật khẩu; other = true → nhập đủ mã dòng họ + tên đăng nhập */
 function renderLogin(err = '', other = false) {
-  const accs = savedAccs(), acc = !other && accs[0];
+  const hint = !other ? LOGIN_HINT : null;
+  let accs = savedAccs();
+  const hm = hint && accs.find((a) => a.code === hint.code && a.user === hint.user);
+  if (hm) { accs = [hm, ...accs.filter((x) => x !== hm)]; store('accounts', accs); }   // tài khoản trong link đã lưu → dùng luôn
+  const fill = hint && !hm ? hint : null;   // chưa lưu → form đầy đủ, điền sẵn mã dòng họ + tên đăng nhập
+  const acc = !other && !fill && accs[0];
   $('gate').innerHTML = `<form class="gbox" id="lf" autocomplete="on">
     ${acc ? `<div class="lock"><i class="fa-solid fa-sitemap"></i></div>
       <div class="gt">Gia phả</div>
@@ -214,9 +223,9 @@ function renderLogin(err = '', other = false) {
       <input type="text" autocomplete="username" value="${esc(acc.code + '/' + acc.user)}" hidden>`
     : `<div class="lock"><i class="fa-solid fa-sitemap"></i></div>
       <div class="gt">Gia phả</div>
-      <p class="gs">Đăng nhập để xem gia phả dòng họ</p>
-      <div class="gfld"><i class="fa-solid fa-landmark"></i><input id="lCode" placeholder="Mã dòng họ" autocomplete="organization" autocapitalize="none" required></div>
-      <div class="gfld"><i class="fa-solid fa-user"></i><input id="lUser" placeholder="Tên đăng nhập" autocomplete="username" autocapitalize="none" required></div>`}
+      <p class="gs">${fill ? 'Đã điền sẵn tài khoản của bạn – <b>chỉ cần nhập mật khẩu</b>' : 'Đăng nhập để xem gia phả dòng họ'}</p>
+      <div class="gfld"><i class="fa-solid fa-landmark"></i><input id="lCode" placeholder="Mã dòng họ" autocomplete="organization" autocapitalize="none" value="${esc(fill ? fill.code : '')}" required></div>
+      <div class="gfld"><i class="fa-solid fa-user"></i><input id="lUser" placeholder="Tên đăng nhập" autocomplete="username" autocapitalize="none" value="${esc(fill ? fill.user : '')}" required></div>`}
     <div class="gfld"><i class="fa-solid fa-lock"></i><input id="lPw" type="password" placeholder="Mật khẩu" autocomplete="current-password" required><button type="button" class="eye" id="lEye" aria-label="Hiện mật khẩu"><i class="fa-regular fa-eye"></i></button></div>
     <div class="grow">${acc || accs.length ? `<button type="button" class="linkbtn" id="lSwitch"><i class="fa-solid fa-right-left"></i> ${acc ? 'Chuyển tài khoản' : 'Tài khoản đã lưu'}</button>` : '<span></span>'}<button type="button" class="linkbtn" id="lForgot">Quên mật khẩu?</button></div>
     <button class="go" id="lGo"><span>Đăng nhập</span><i class="fa-solid fa-arrow-right"></i></button>
@@ -227,7 +236,7 @@ function renderLogin(err = '', other = false) {
     <button type="button" class="instbtn" data-install ${canInstall() ? '' : 'hidden'}><i class="fa-solid fa-download"></i>Cài ứng dụng lên máy</button>
   </form>`;
   bindInstall($('gate'));
-  if (acc) setTimeout(() => $('lPw') && $('lPw').focus(), 100);
+  if (acc || fill) setTimeout(() => $('lPw') && $('lPw').focus(), 100);
   const codeUser = () => (acc ? [acc.code, acc.user] : [$('lCode').value.trim().toLowerCase(), $('lUser').value.trim().toLowerCase()]);
   $('lEye').onclick = () => { const i = $('lPw'); i.type = i.type === 'password' ? 'text' : 'password'; $('lEye').innerHTML = `<i class="fa-regular fa-eye${i.type === 'text' ? '-slash' : ''}"></i>`; };
   $('lReg').onclick = renderRegister;
@@ -257,7 +266,7 @@ function renderLogin(err = '', other = false) {
     e.preventDefault(); $('gErr').textContent = '';
     const [code, user] = codeUser();
     $('lGo').disabled = true; busy('Đang đăng nhập…');
-    try { await D.login(code, user, $('lPw').value); }
+    try { await D.login(code, user, $('lPw').value); dropLoginHint(); }
     catch (er) { $('gErr').textContent = D.errMsg(er); }
     finally { busy(); if ($('lGo')) $('lGo').disabled = false; }
   };
@@ -1125,18 +1134,18 @@ const fmtTime = (ts) => { const d = ts && ts.toDate ? ts.toDate() : new Date(ts)
 const DAYS = [['1', 'Hết hạn sau 1 ngày'], ['7', 'Hết hạn sau 7 ngày'], ['30', 'Hết hạn sau 30 ngày']];
 
 /** Màn chia sẻ chung: QR to + Gửi (Zalo…) + Copy + Tải ảnh QR. Dùng cho link liên kết hồ sơ và link chia sẻ gia phả */
-async function showShareSheet({ title, url, text, note, expiresAt }) {
+async function showShareSheet({ title, url, text, note, expiresAt, foot }) {
   openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}</h2>
     ${note ? `<p style="margin:0;color:var(--muted)">${note}</p>` : ''}
     <div class="qrbox" id="qrBox"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
-    <p class="qrexp"><i class="fa-regular fa-clock"></i> Hết hạn lúc <b>${esc(fmtTime(expiresAt))}</b></p>
+    ${expiresAt ? `<p class="qrexp"><i class="fa-regular fa-clock"></i> Hết hạn lúc <b>${esc(fmtTime(expiresAt))}</b></p>` : ''}
     <span class="codebox">${esc(url)}</span>
     <div class="sacts">
       <button class="abtn blue full" id="shGo"><i class="fa-solid fa-paper-plane"></i>Gửi qua Zalo / ứng dụng khác</button>
       <button class="abtn" id="shCopy"><i class="fa-regular fa-copy"></i>Copy link</button>
       <button class="abtn" id="shPng"><i class="fa-solid fa-download"></i>Tải ảnh QR</button>
     </div>
-    <p class="note">Người nhận: mở app Gia phả, đăng nhập tài khoản dòng họ của họ → bấm <b>icon quét mã <i class="fa-solid fa-qrcode"></i></b> trên thanh đầu → quét mã này. Hoặc bấm vào link được gửi qua Zalo.</p>`);
+    <p class="note">${foot || 'Người nhận: mở app Gia phả, đăng nhập tài khoản dòng họ của họ → bấm <b>icon quét mã <i class="fa-solid fa-qrcode"></i></b> trên thanh đầu → quét mã này. Hoặc bấm vào link được gửi qua Zalo.'}</p>`);
   let dataUrl = '';
   try {
     const qrcode = await loadScript(QR_LIB, 'qrcode');
@@ -1779,7 +1788,8 @@ function userForm(u) {
       ${isNew ? `<div class="fld full"><label>Email (không bắt buộc)</label><input id="u_email" type="email" placeholder="Để người dùng tự lấy lại mật khẩu"><div class="hint">Không có email: quên mật khẩu thì phải tạo tài khoản mới</div></div>
       <div class="fld full"><label>Mật khẩu *</label><input id="u_pw" type="text" autocomplete="off" minlength="6" value="${esc(Math.random().toString(36).slice(2, 10))}" required><div class="hint">Gửi mật khẩu này cho người dùng; họ tự đổi sau khi đăng nhập</div></div>`
         : `<div class="fld full"><label>Email</label><input value="${esc(d.email || '— không có —')}" disabled></div>
-      <label class="ck full"><input type="checkbox" id="u_active" ${d.active !== false ? 'checked' : ''}>Hoạt động (bỏ chọn để tắt tài khoản, gỡ mọi quyền)</label>`}
+      <label class="ck full"><input type="checkbox" id="u_active" ${d.active !== false ? 'checked' : ''}>Hoạt động (bỏ chọn để tắt tài khoản, gỡ mọi quyền)</label>
+      <button type="button" class="abtn full" id="uLink"><i class="fa-solid fa-paper-plane"></i>Gửi link đăng nhập (điền sẵn tài khoản)</button>`}
     </div>
     <div class="fsec"><i class="fa-solid fa-shield-halved"></i>Quyền theo gia phả</div>
     <div class="rows">${Object.entries(trees).map(([t, n]) => `<div class="r"><span style="color:var(--text);flex:1">${esc(n)}</span><select class="rsel" data-tr="${esc(t)}" aria-label="Quyền trên: ${esc(n)}">${Object.entries(TROLE).map(([k, l]) => `<option value="${k}" ${(d.trees || {})[t] === k || (!k && !(d.trees || {})[t]) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')
@@ -1788,6 +1798,10 @@ function userForm(u) {
     </form>`;
   openSheet(html);
   $('ucancel').onclick = () => closeSheet();
+  if ($('uLink')) $('uLink').onclick = () => showShareSheet({ title: `Link đăng nhập – ${d.name || d.username}`, url: loginUrl(d.username),
+    text: `Gia phả ${D.clan.name || D.clan.code}: bấm link, nhập mật khẩu là vào (tài khoản ${d.username})`,
+    note: `Mở link là đã điền sẵn <b>mã dòng họ ${esc(D.clan.code)}</b> và <b>tên đăng nhập ${esc(d.username)}</b>. Người nhận chỉ nhập mật khẩu lần đầu – lần sau máy nhớ tài khoản.`,
+    foot: 'Link <b>không chứa mật khẩu</b>. Gửi mật khẩu riêng (hoặc người dùng đã biết). Có thể cho quét mã QR bằng camera điện thoại.' });
   $('uf').onsubmit = async (e) => {
     e.preventDefault();
     const v = (k) => ($('u_' + k) ? $('u_' + k).value.trim() : '');
@@ -1799,8 +1813,8 @@ function userForm(u) {
     try {
       if (isNew) {
         await D.createUser(f); busy(); closeSheet(true);
-        await ask({ title: 'Đã tạo người dùng', msg: `Gửi thông tin đăng nhập cho <b>${esc(f.name)}</b>:<br>Mã dòng họ: <b>${esc(D.clan.code)}</b><br>Tên đăng nhập: <b>${esc(f.username)}</b><br>Mật khẩu: <b>${esc(f.password)}</b>`, ok: 'Copy & đóng' })
-          .then((ok) => ok && navigator.clipboard && navigator.clipboard.writeText(`Link: ${location.origin}${location.pathname}\nMã dòng họ: ${D.clan.code}\nTên đăng nhập: ${f.username}\nMật khẩu: ${f.password}`).then(() => toast('Đã copy')).catch(() => {}));
+        await ask({ title: 'Đã tạo người dùng', msg: `Gửi thông tin đăng nhập cho <b>${esc(f.name)}</b>:<br>Link: <b>${esc(loginUrl(f.username))}</b> (mở là điền sẵn tài khoản)<br>Mã dòng họ: <b>${esc(D.clan.code)}</b><br>Tên đăng nhập: <b>${esc(f.username)}</b><br>Mật khẩu: <b>${esc(f.password)}</b>`, ok: 'Copy & đóng' })
+          .then((ok) => ok && navigator.clipboard && navigator.clipboard.writeText(`Gia phả ${D.clan.name || D.clan.code} – bấm link, nhập mật khẩu là vào:\n${loginUrl(f.username)}\nMã dòng họ: ${D.clan.code}\nTên đăng nhập: ${f.username}\nMật khẩu: ${f.password}`).then(() => toast('Đã copy')).catch(() => {}));
       } else { await D.updateUser(u, f); busy(); closeSheet(true); toast('Đã lưu'); }
       renderUsers($('main'));
     } catch (er) { busy(); toast(D.errMsg(er), 5000); }
