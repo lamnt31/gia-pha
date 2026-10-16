@@ -325,6 +325,18 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   /* người đã mất: bông sen trắng trên nền tròn đen mờ (như ảnh tưởng niệm) */
   .tn .lotus circle { fill: rgba(17,24,39,.72); stroke: #fff; stroke-width: 1.5; }
   .tn .lotus text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px; fill: #fff; }
+  /* được sửa: nút bút chì góc dưới phải (bấm = sửa; nhấn giữ ô cũng sửa) */
+  .tn .edb { cursor: pointer; }
+  .tn .edb circle { fill: #0070f4; stroke: #fff; stroke-width: 1.5; }
+  .tn .edb text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 10px; fill: #fff; pointer-events: none; }
+  .tn .edb:hover circle { fill: #005ad1; }
+  .tbox { -webkit-touch-callout: none; }
+  /* ô "Tôi": ghim định vị phía trên, có vòng sóng lan ra cho dễ thấy */
+  .tn .mepin circle { fill: #0070f4; stroke: #fff; stroke-width: 2; }
+  .tn .mepin text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 13px; fill: #fff; pointer-events: none; }
+  .tn .mepin .pulse { fill: #0070f4; stroke: none; opacity: .5; transform-box: fill-box; transform-origin: center; animation: mepulse 1.8s ease-out infinite; }
+  @keyframes mepulse { from { transform: scale(1); opacity: .5; } to { transform: scale(2.4); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .tn .mepin .pulse { animation: none; opacity: 0; } }
   .ph { position: relative; overflow: visible; }
   .ph > img { border-radius: 50%; }
   .ph .lotusb { position: absolute; left: -2px; top: -2px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
@@ -444,6 +456,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792140520303"></script>
+<script type="module" src="js/app.js?v=1792142510318"></script>
 </body>
 </html>

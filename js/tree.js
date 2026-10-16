@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792140520303';
+import { esc } from './ui.js?v=1792142510318';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -183,7 +183,7 @@ function fit(t, maxW, px, minPx, w = 700) {
 /** Màu nam theo nhánh (nữ giữ màu hồng). Tránh xanh dương mặc định và hồng */
 export const BRANCH_COLORS = ['#059669', '#d97706', '#7c3aed', '#0891b2', '#b45309', '#65a30d', '#c026d3', '#0d9488', '#ea580c', '#4f46e5', '#a16207', '#be123c'];
 export const branchColor = (i) => BRANCH_COLORS[i % BRANCH_COLORS.length];
-export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranches = true, kin = null, meId = '') {
+export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranches = true, kin = null, meId = '', canEd = null) {
   const node = (n) => {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
     const nh = n.kind === 'blood' && A.noHeir(p.id), icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0);
@@ -206,6 +206,8 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
       <text x="${x}" y="57" class="gen">${esc(gen)}</text>
       ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
       ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}
+      ${p.id === meId ? `<g class="mepin"><title>Đây là bạn</title><circle class="pulse" cx="${NW / 2}" cy="-6" r="13"/><circle cx="${NW / 2}" cy="-6" r="12"/><text x="${NW / 2}" y="-1.5" text-anchor="middle">&#xf3c5;</text></g>` : ''}
+      ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
     </g>`;
   };
@@ -215,7 +217,8 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
 }
 
 /** Kéo / phóng to / 2 ngón tay cho khung chứa cây. onTap(id) khi chạm 1 người, onToggle(id) khi chạm +/− */
-export function panZoom(box, svg, { onTap, onToggle }) {
+export function panZoom(box, svg, { onTap, onToggle, onEdit }) {
+  let hold = 0, held = false;   // nhấn giữ 1 ô ~0,55 giây → sửa (điện thoại); bấm icon bút chì → sửa
   const S = { x: 0, y: 0, k: 1 };
   const apply = () => { svg.style.transform = `translate(${S.x}px,${S.y}px) scale(${S.k})`; };
   const pts = new Map();
@@ -226,8 +229,12 @@ export function panZoom(box, svg, { onTap, onToggle }) {
   box.addEventListener('pointerdown', (e) => {
     if (ui(e)) return;
     try { box.setPointerCapture(e.pointerId); } catch (x) { /* không sao */ } pts.set(e.pointerId, [e.clientX, e.clientY]);
-    moved = false;
-    if (pts.size === 1) start = { x: S.x, y: S.y, px: e.clientX, py: e.clientY, target: e.target };
+    moved = false; held = false; clearTimeout(hold);
+    if (pts.size === 1) {
+      start = { x: S.x, y: S.y, px: e.clientX, py: e.clientY, target: e.target };
+      const nd = onEdit && e.target.closest && !e.target.closest('[data-tog]') && e.target.closest('[data-id]');
+      if (nd && nd.querySelector('[data-edit]')) hold = setTimeout(() => { if (!moved && pts.size === 1) { held = true; if (navigator.vibrate) navigator.vibrate(15); onEdit(nd.dataset.id); } }, 550);
+    } else clearTimeout(hold);
     if (pts.size === 2) { const [a, b] = [...pts.values()]; start = { pinch: Math.hypot(a[0] - b[0], a[1] - b[1]), k: S.k }; }
   });
   box.addEventListener('pointermove', (e) => {
@@ -235,7 +242,7 @@ export function panZoom(box, svg, { onTap, onToggle }) {
     pts.set(e.pointerId, [e.clientX, e.clientY]);
     if (pts.size === 1 && start && start.px !== undefined) {
       const dx = e.clientX - start.px, dy = e.clientY - start.py;
-      if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+      if (Math.abs(dx) + Math.abs(dy) > 6) { moved = true; clearTimeout(hold); }
       if (moved) { S.x = start.x + dx; S.y = start.y + dy; apply(); }
     } else if (pts.size === 2 && start && start.pinch) {
       const [a, b] = [...pts.values()], r = box.getBoundingClientRect();
@@ -244,9 +251,12 @@ export function panZoom(box, svg, { onTap, onToggle }) {
     }
   });
   const up = (e) => {
-    const wasTap = pts.size === 1 && !moved && start && start.target;
+    clearTimeout(hold);
+    const wasTap = pts.size === 1 && !moved && !held && start && start.target;
     pts.delete(e.pointerId);
     if (wasTap) {
+      const ed = onEdit && start.target.closest && start.target.closest('[data-edit]');
+      if (ed) { onEdit(ed.dataset.edit); if (!pts.size) start = null; return; }
       const tog = start.target.closest && start.target.closest('[data-tog]');
       const nd = start.target.closest && start.target.closest('[data-id]');
       if (tog) onToggle(tog.dataset.tog); else if (nd) onTap(nd.dataset.id);

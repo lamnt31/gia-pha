@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792140520303';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792142510318';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -225,10 +225,10 @@ export async function listUsers() {
   return s.docs.map((d) => ({ uid: d.id, ...d.data() }));
 }
 /** Ghi quyền trên từng gia phả: có quyền → set member; không có / bị tắt → xóa member */
-function applyTreeRoles(b, uid, name, newTrees, oldTrees, active) {
+function applyTreeRoles(b, uid, name, newTrees, oldTrees, active, meMap = {}) {
   for (const t of new Set([...Object.keys(newTrees || {}), ...Object.keys(oldTrees || {})])) {
     const ref = doc(db, 'trees', t, 'members', uid);
-    if (active && newTrees[t]) b.set(ref, { role: newTrees[t], name });
+    if (active && newTrees[t]) b.set(ref, { role: newTrees[t], name, ...(meMap[t] ? { me: meMap[t] } : {}) });
     else if (oldTrees && oldTrees[t]) b.delete(ref);
   }
 }
@@ -259,7 +259,7 @@ export async function createUser(f) {
 export async function updateUser(u, f) {
   const b = writeBatch(db), active = f.active !== false, trees = f.trees || {};
   b.update(doc(db, 'clans', clan.code, 'users', u.uid), { name: f.name.trim(), phone: (f.phone || '').trim(), title: (f.title || '').trim(), active, trees, ...(f.me ? { me: f.me } : {}) });
-  applyTreeRoles(b, u.uid, f.name.trim(), trees, u.trees || {}, active);
+  applyTreeRoles(b, u.uid, f.name.trim(), trees, u.trees || {}, active, u.me || {});
   await b.commit();
 }
 
@@ -313,8 +313,63 @@ const forLog = (o) => { const r = { ...o }; delete r.photo; delete r.updatedAt; 
  *   updates: [{id, ...fields}] → sửa (fields có thể dùng arrayUnion/arrayRemove qua helper rel)
  * Trả về id các người mới.
  */
+/**
+ * Tổ tiên của từng người (anc) – để luật bảo mật biết "con cháu của X" (quyền sửa theo nhánh).
+ * anc = cha, mẹ + tổ tiên của họ; người không có cha mẹ trong cây (lấy vào họ) = vợ/chồng + tổ tiên của vợ/chồng.
+ * map: Map(id → người, đã bỏ người bị xóa). Trả về Map(id → mảng id đã sắp xếp)
+ */
+export function computeAnc(map) {
+  const memo = new Map(), busy = new Set();
+  const up = (id) => {   // tổ tiên theo cha mẹ (kèm vợ/chồng nếu là người lấy vào họ)
+    if (memo.has(id)) return memo.get(id);
+    const p = map.get(id); if (!p || busy.has(id)) return new Set();
+    busy.add(id);
+    const s = new Set();
+    const par = [p.fatherId, p.motherId].filter((x) => x && map.has(x));
+    for (const q of par) { s.add(q); up(q).forEach((x) => s.add(x)); }
+    if (!par.length) for (const sp of (p.spouseIds || []).filter((x) => map.has(x))) {
+      const o = map.get(sp);
+      if ([o.fatherId, o.motherId].some((x) => x && map.has(x)) || !s.size) { s.add(sp); up(sp).forEach((x) => x !== id && s.add(x)); }
+    }
+    busy.delete(id); s.delete(id); memo.set(id, s); return s;
+  };
+  const out = new Map();
+  for (const id of map.keys()) out.set(id, [...up(id)].sort().slice(0, 300));
+  return out;
+}
+const sameArr = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+/** Trạng thái sau khi lưu (để tính anc cho người mới / người đổi quan hệ) */
+function nextMap(treeId, adds, updates, current) {
+  const base = SYNC && SYNC.treeId === treeId ? SYNC.map : current, m = new Map();
+  for (const [id, p] of base) if (!p.deleted) m.set(id, p);
+  for (const a of adds) if (a.id) m.set(a.id, { ...a, deleted: false });
+  for (const { id, _log, ...f } of updates) {
+    const old = m.get(id) || {}, nf = { ...old, id };
+    for (const [k, v] of Object.entries(f)) nf[k] = v && v._rel ? v.apply(old[k] || []) : v;
+    m.set(id, nf);
+  }
+  return m;
+}
+/** Biên tập / chủ: sửa lại anc lệch (lần đầu, sau khi đổi quan hệ nhiều đời). Ghi theo lô 400 */
+export async function syncAnc(treeId) {
+  if (!SYNC || SYNC.treeId !== treeId) return 0;
+  const m = new Map([...SYNC.map].filter(([, p]) => !p.deleted)), anc = computeAnc(m), fix = [];
+  for (const [id, a] of anc) if (!sameArr(m.get(id).anc || [], a)) fix.push([id, a]);
+  for (let i = 0; i < fix.length; i += 400) {
+    const b = writeBatch(db);
+    fix.slice(i, i + 400).forEach(([id, a]) => b.update(doc(db, 'trees', treeId, 'persons', id), { anc: a, ...stamp() }));
+    await b.commit();
+  }
+  return fix.length;
+}
 export async function saveChanges(treeId, { adds = [], updates = [] }, current = new Map()) {
   const b = writeBatch(db), ids = [];
+  // id cố định cho người mới → tính được anc (luật nhánh cần anc ngay lúc tạo)
+  adds = adds.map((a) => (a.id ? a : { ...a, id: doc(collection(db, 'trees', treeId, 'persons')).id }));
+  const REL = ['fatherId', 'motherId', 'spouseIds'];
+  const nm = nextMap(treeId, adds, updates, current), anc = computeAnc(nm);
+  adds = adds.map((a) => ({ ...a, anc: anc.get(a.id) || [] }));
+  updates = updates.map((u) => (Object.keys(u).some((k) => REL.includes(k)) && !sameArr((nm.get(u.id) || {}).anc || [], anc.get(u.id) || []) ? { ...u, anc: anc.get(u.id) || [] } : u));
   for (const a of adds) {
     const ref = a.id ? doc(db, 'trees', treeId, 'persons', a.id) : doc(collection(db, 'trees', treeId, 'persons'));
     const data = clean({ ...a, id: undefined, deleted: false, createdBy: me.uid, ...stamp() });
@@ -380,6 +435,9 @@ export async function addProposal(treeId, { personId, personName, text, kind }) 
 /** Quản trị gắn tài khoản (uid) với 1 người trong gia phả (personId rỗng = bỏ gắn) */
 export async function setUserPerson(uid, treeId, personId) {
   await updateDoc(doc(db, 'clans', clan.code, 'users', uid), { [`me.${treeId}`]: personId || deleteField() });
+  // quyền theo nhánh: luật bảo mật đọc members.me
+  const mref = doc(db, 'trees', treeId, 'members', uid);
+  if ((await getDoc(mref)).exists()) await updateDoc(mref, { me: personId || deleteField() });
   if (uid === me.uid) { account.me = { ...(account.me || {}) }; if (personId) account.me[treeId] = personId; else delete account.me[treeId]; }
 }
 /** Người trong gia phả mà tài khoản đang đăng nhập được gắn với */
