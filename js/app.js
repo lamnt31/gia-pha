@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792121894916';
-import * as D from './data.js?v=1792121894916';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792121894916';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792121894916';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792122146528';
+import * as D from './data.js?v=1792122146528';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792122146528';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792122146528';
 
-const APP_VER = '16/10 10:38';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 10:42';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -96,6 +96,9 @@ const ago = (ts) => {
 };
 const initials = (n) => { const w = String(n || '?').trim().split(/\s+/); return (w.at(-1) || '?')[0].toUpperCase(); };
 const avatar = (p, cls = 'ic') => `<div class="${cls} ${p.gender === 'f' ? 'f' : 'm'}">${p.photo ? `<img src="${esc(p.photo)}" alt="">` : esc(initials(p.name))}</div>`;
+/** Sắp xếp người theo đời (như trên cây): đời → thứ tự con → năm sinh → tên. Người chưa nối vào cây xếp cuối */
+const byGen = (a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || (a.order || 99) - (b.order || 99)
+  || (yearOf(a.birthSolar) || yearOf(a.birthLunar) || 9999) - (yearOf(b.birthSolar) || yearOf(b.birthLunar) || 9999) || pname(a).localeCompare(pname(b), 'vi');
 const pname = (p) => (p && p.name) || 'Chưa rõ tên';
 
 // ======================= Khởi động =======================
@@ -758,7 +761,7 @@ async function save(p, data, ctx, otherId) {
 
 /** Nối quan hệ giữa 2 người đã có (cha, mẹ, vợ/chồng) – dùng để gộp nhánh rời */
 async function linkForm(p) {
-  const others = S.persons.filter((x) => x.id !== p.id).sort((a, b) => pname(a).localeCompare(pname(b), 'vi'));
+  const others = S.persons.filter((x) => x.id !== p.id).sort(byGen);
   const v = await ask({ title: `Nối quan hệ cho ${pname(p)}`, msg: 'Chọn người đã có trong gia phả.',
     fields: [{ id: 'k', type: 'select', value: 'father', options: [['father', 'Là cha của ' + pname(p)], ['mother', 'Là mẹ của ' + pname(p)], ['spouse', 'Là vợ/chồng của ' + pname(p)], ['child', 'Là con của ' + pname(p)], ['unspouse', 'Bỏ quan hệ vợ/chồng']] },
       { id: 'o', type: 'select', value: '', options: [['', '— Chọn người —'], ...others.map((x) => [x.id, `${pname(x)}${S.A.label(x.id) ? ' · ' + S.A.label(x.id) : ''}${lifeText(x) ? ' · ' + lifeText(x) : ''}`])] }],
@@ -811,7 +814,7 @@ function renderList(m) {
     const list = S.persons.filter((p) => (!t || fold([p.name, p.nick, p.alias, p.branch].join(' ')).includes(t))
       && (S.filter === 'all' || (S.filter === 'alive' && !isDead(p)) || (S.filter === 'dead' && isDead(p)) || (S.filter === 'm' && p.gender !== 'f') || (S.filter === 'f' && p.gender === 'f') || (S.filter === 'loose' && loose(p)))
       && (S.gen === '' || String(S.A.shown(p.id)) === String(S.gen)))
-      .sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi'));
+      .sort(byGen);
     $('lres').innerHTML = list.length ? list.slice(0, 500).map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p), p.branch].filter(Boolean).join(' · '))}</span></div>${isDead(p) ? '<span class="when info">Đã mất</span>' : ''}</div>`).join('')
       + (list.length > 500 ? `<div class="empty" style="padding:14px">… còn ${list.length - 500} người, hãy gõ tìm cụ thể hơn</div>` : '')
       : `<div class="empty"><i class="fa-solid fa-magnifying-glass"></i>Không có ai phù hợp</div>`;
@@ -937,7 +940,7 @@ async function linkWithCode(p, code) {
   try { sc = await D.peekShareCode(code); } catch (e) { busy(); return toast(D.errMsg(e), 5000); }
   busy();
   if (!p) {   // mở từ link: chọn người tương ứng trong cây đang mở
-    const opts = [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi'))
+    const opts = [...S.persons].sort(byGen)
       .map((x) => [x.id, `${pname(x)}${S.A.label(x.id) ? ' · ' + S.A.label(x.id) : ''}${lifeText(x) ? ' · ' + lifeText(x) : ''}`]);
     if (!opts.length) return toast('Gia phả đang mở chưa có ai để liên kết.', 4000);
     const id = await pick({ title: `Ai trong "${S.tree.name}" là ${sc.name} (${sc.clanName})?`, options: opts });
@@ -1127,7 +1130,7 @@ function collectScope(p, scope) {
   const withSpouses = (x) => { add(x); (x.spouseIds || []).map(byId).forEach(add); };
   if (scope === 'one') add(p);
   else if (scope === 'family') { withSpouses(p); S.A.allKids(p.id).forEach(add); }
-  else if (scope === 'all') [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi')).forEach(add);
+  else if (scope === 'all') [...S.persons].sort(byGen).forEach(add);
   else { const walk = (x) => { withSpouses(x); S.A.allKids(x.id).forEach(walk); }; walk(p); }
   return out.map((x) => ({ p: x, info: [S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · ') }));
 }
@@ -1155,7 +1158,7 @@ async function collectLinkFor(p) {
 /** Chọn nhiều người (tick) để gửi 1 link nhờ điền. preset: Set id tick sẵn. Trả về [{p, info}] hoặc null */
 function pickPeople(preset = new Set()) {
   return new Promise((resolve) => {
-    const all = [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi'));
+    const all = [...S.persons].sort(byGen);
     const sel = new Set(preset);
     let done = false;
     openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Chọn người để nhờ điền</h2>
