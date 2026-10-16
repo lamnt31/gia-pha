@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792137090446';
-import * as D from './data.js?v=1792137090446';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792137090446';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792137090446';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792137394822';
+import * as D from './data.js?v=1792137394822';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792137394822';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792137394822';
 
-const APP_VER = '16/10 14:51';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 14:56';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -174,7 +174,20 @@ async function doInstall() {
         + '<b>Cách 1 (nhanh nhất):</b> bấm biểu tượng <b>Cài đặt</b> <i class="fa-solid fa-display"></i><i class="fa-solid fa-arrow-down" style="font-size:.7em"></i> ở <b>cuối thanh địa chỉ</b>, ngay cạnh ngôi sao ☆ → <b>Cài đặt</b>.<br><br>'
         + '<b>Cách 2:</b><br>• <b>Edge:</b> menu <b>⋯</b> → <b>Ứng dụng</b> → <b>Cài đặt trang web này dưới dạng ứng dụng</b><br>'
         + '• <b>Chrome:</b> menu <b>⋮</b> → <b>Truyền, lưu và chia sẻ</b> → <b>Cài đặt trang dưới dạng ứng dụng</b>';
-  await ask({ title: 'Cài "Gia phả" lên máy', msg, ok: 'Đã hiểu' });
+  // tự kiểm tra lý do trình duyệt không cho cài – để người dùng chụp gửi khi cần
+  const chk = [];
+  if (!isIOS) {
+    let sw = false, swErr = '';
+    try { sw = !!(navigator.serviceWorker && (navigator.serviceWorker.controller || await navigator.serviceWorker.getRegistration())); } catch (e) { swErr = e.message; }
+    if (!sw && navigator.serviceWorker && location.protocol === 'https:') { try { await navigator.serviceWorker.register('sw.js'); sw = true; } catch (e) { swErr = e.message; } }
+    chk.push(sw ? '✔ Chạy ngầm (service worker): có' : `✘ Chạy ngầm (service worker): <b>không đăng ký được</b>${swErr ? ' – ' + esc(swErr) : ''}. Thường do Chrome đang <b>chặn cookie / dữ liệu trang</b>: vào <b>Cài đặt → Quyền riêng tư và bảo mật → Cookie của bên thứ ba</b> (hoặc biểu tượng <i class="fa-solid fa-sliders"></i> trái thanh địa chỉ → <b>Cookie và dữ liệu trang web</b>) cho phép trang này, rồi tải lại.`);
+    let man = false; try { man = (await fetch('manifest.webmanifest', { cache: 'no-store' })).ok; } catch (e) { /* bỏ qua */ }
+    chk.push(man ? '✔ Tệp mô tả ứng dụng (manifest): có' : '✘ Không tải được tệp mô tả ứng dụng (manifest)');
+    try { if (navigator.getInstalledRelatedApps) chk.push((await navigator.getInstalledRelatedApps()).length ? '⚠ Trình duyệt báo: <b>đã cài</b> trong hồ sơ này – xem <b>chrome://apps</b>' : '✔ Chưa cài trong hồ sơ trình duyệt này'); } catch (e) { /* bỏ qua */ }
+    try { const st = await navigator.storage.estimate(); if (!st || !st.quota) chk.push('✘ Trình duyệt không cho lưu dữ liệu trang'); } catch (e) { chk.push('✘ Trình duyệt chặn lưu dữ liệu trang'); }
+    if (/Incognito|Guest/i.test(navigator.userAgent)) chk.push('✘ Cửa sổ ẩn danh / khách không cài được');
+  }
+  await ask({ title: 'Cài "Gia phả" lên máy', msg: msg + (chk.length ? `<div style="margin-top:12px;padding:10px;border-radius:10px;background:var(--bg2);font-size:var(--fs-sm);line-height:1.6"><b>Kiểm tra trên máy này:</b><br>${chk.join('<br>')}</div>` : ''), ok: 'Đã hiểu' });
 }
 
 // ======================= Đăng nhập (giống ech-client: mã dòng họ + tên đăng nhập + mật khẩu) =======================
