@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792142807177';
+import { esc } from './ui.js?v=1792143838301';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -207,7 +207,7 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
       ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
       ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}
       ${p.id === meId ? `<g class="mepin"><title>Đây là bạn</title><circle class="pulse" cx="${NW / 2}" cy="-6" r="13"/><circle cx="${NW / 2}" cy="-6" r="12"/><text x="${NW / 2}" y="-1.5" text-anchor="middle">&#xf3c5;</text></g>` : ''}
-      ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
+      ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><rect class="hit" x="${NW - 46}" y="${NH - 30}" width="58" height="44" rx="10"/><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
     </g>`;
   };
@@ -255,7 +255,12 @@ export function panZoom(box, svg, { onTap, onToggle, onEdit }) {
     const wasTap = pts.size === 1 && !moved && !held && start && start.target;
     pts.delete(e.pointerId);
     if (wasTap) {
-      const ed = onEdit && start.target.closest && start.target.closest('[data-edit]');
+      let ed = onEdit && start.target.closest && start.target.closest('[data-edit]');
+      // cây thu nhỏ → nút bút chì rất bé: chạm trong bán kính ~26px quanh nút cũng tính là bấm sửa
+      if (!ed && onEdit && start.target.closest) {
+        const nd = start.target.closest('[data-id]'), c = nd && nd.querySelector('.edb circle');
+        if (c) { const r = c.getBoundingClientRect(); if (Math.hypot(start.px - (r.left + r.width / 2), start.py - (r.top + r.height / 2)) <= 26) ed = c.closest('[data-edit]'); }
+      }
       if (ed) { onEdit(ed.dataset.edit); if (!pts.size) start = null; return; }
       const tog = start.target.closest && start.target.closest('[data-tog]');
       const nd = start.target.closest && start.target.closest('[data-id]');
