@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792060443340';
-import * as D from './data.js?v=1792060443340';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792060443340';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792060443340';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792121481492';
+import * as D from './data.js?v=1792121481492';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792121481492';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792121481492';
 
-const APP_VER = '15/10 17:34';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 10:31';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1127,6 +1127,7 @@ function collectScope(p, scope) {
   const withSpouses = (x) => { add(x); (x.spouseIds || []).map(byId).forEach(add); };
   if (scope === 'one') add(p);
   else if (scope === 'family') { withSpouses(p); S.A.allKids(p.id).forEach(add); }
+  else if (scope === 'all') [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi')).forEach(add);
   else { const walk = (x) => { withSpouses(x); S.A.allKids(x.id).forEach(walk); }; walk(p); }
   return out.map((x) => ({ p: x, info: [S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · ') }));
 }
@@ -1134,11 +1135,12 @@ async function collectLinkFor(p) {
   const n = (sc) => collectScope(p, sc).length;
   const v = await ask({ title: 'Nhờ người khác điền thông tin', msg: `Người nhận <b>không cần tài khoản</b>. Gửi vào nhóm Zalo được – ai liên quan tự vào điền. Thông tin chỉ vào gia phả sau khi bạn <b>duyệt</b>.`,
     fields: [
-      { id: 'sc', type: 'select', value: n('family') > 1 ? 'family' : 'one', ph: 'Phạm vi', options: [['one', `Chỉ ${pname(p)}`], ['family', `Gia đình: vợ/chồng, các con (${n('family')} người)`], ['branch', `Cả nhánh: con cháu mọi đời (${n('branch')} người)`]] },
+      { id: 'sc', type: 'select', value: n('family') > 1 ? 'family' : 'one', ph: 'Phạm vi', options: [['one', `Chỉ ${pname(p)}`], ['family', `Gia đình: vợ/chồng, các con (${n('family')} người)`], ['branch', `Cả nhánh: con cháu mọi đời (${n('branch')} người)`], ['pick', 'Tự chọn người… (tick nhiều người)']] },
       { id: 'ad', type: 'select', value: '1', ph: 'Thêm người mới', options: [['1', 'Cho thêm người mới (con, vợ/chồng)'], ['0', 'Không cho thêm người mới']] },
       { id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
   if (!v) return;
-  const list = collectScope(p, v.sc);
+  let list = collectScope(p, v.sc === 'pick' ? 'family' : v.sc);
+  if (v.sc === 'pick') { list = await pickPeople(new Set(list.map((x) => x.p.id))); if (!list) return; }
   if (list.length > 300) toast('Nhánh quá lớn – link chỉ gồm 300 người đầu', 4000);
   busy('Đang tạo link…');
   let code;
@@ -1148,6 +1150,51 @@ async function collectLinkFor(p) {
   showShareSheet({ title: 'Link nhờ điền thông tin', url: D.collectLinkUrl(code), expiresAt: Date.now() + Number(v.d) * 864e5,
     text: `Nhờ cả nhà kiểm tra, bổ sung thông tin ${who} cho gia phả ${S.tree.name}`,
     note: `Phạm vi: <b>${esc(who)}</b>${v.ad === '1' ? ' · được thêm người mới' : ''}. Người nhận <b>không cần đăng nhập</b>; bạn duyệt ở <b>Duyệt thông tin</b>.` });
+}
+
+/** Chọn nhiều người (tick) để gửi 1 link nhờ điền. preset: Set id tick sẵn. Trả về [{p, info}] hoặc null */
+function pickPeople(preset = new Set()) {
+  return new Promise((resolve) => {
+    const all = [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || pname(a).localeCompare(pname(b), 'vi'));
+    const sel = new Set(preset);
+    let done = false;
+    openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Chọn người để nhờ điền</h2>
+      <p style="margin:0;color:var(--muted)">Tick những người cần bổ sung thông tin. Gửi link vào nhóm – ai thấy tên mình thì vào sửa.</p>
+      <div class="search" style="margin:10px 0 6px"><i class="fa-solid fa-magnifying-glass"></i><input id="ppQ" placeholder="Tìm tên (gõ không dấu được)" autocomplete="off"></div>
+      <div style="display:flex;gap:8px;margin-bottom:6px"><button type="button" class="abtn sm" id="ppAll">Chọn tất cả đang hiện</button><button type="button" class="abtn sm" id="ppNone">Bỏ chọn hết</button></div>
+      <div class="panel pplist" id="ppList">${all.map((x) => `<label class="item"><input type="checkbox" data-pp="${esc(x.id)}" ${sel.has(x.id) ? 'checked' : ''}>${avatar(x)}<div class="t"><b>${esc(pname(x))}</b><span>${esc([S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · '))}</span></div></label>`).join('')}</div>
+      <div class="fbar"><button type="button" class="abtn" id="ppCancel">Hủy</button><button class="abtn blue" id="ppOk"><i class="fa-solid fa-check"></i><span id="ppN"></span></button></div>`,
+      { fixed: true, beforeClose: () => { if (!done) { done = true; resolve(null); } return true; } });
+    const sh = $('sheet'), boxes = [...sh.querySelectorAll('[data-pp]')];
+    const upd = () => { $('ppN').textContent = `Tạo link (${sel.size} người)`; $('ppOk').disabled = !sel.size; };
+    boxes.forEach((bx) => (bx.onchange = () => { bx.checked ? sel.add(bx.dataset.pp) : sel.delete(bx.dataset.pp); upd(); }));
+    $('ppQ').oninput = () => { const t = fold($('ppQ').value.trim()); boxes.forEach((bx) => (bx.closest('.item').hidden = !!t && !fold(bx.closest('.item').innerText).includes(t))); };
+    $('ppAll').onclick = () => { boxes.forEach((bx) => { if (!bx.closest('.item').hidden) { bx.checked = true; sel.add(bx.dataset.pp); } }); upd(); };
+    $('ppNone').onclick = () => { boxes.forEach((bx) => (bx.checked = false)); sel.clear(); upd(); };
+    $('ppCancel').onclick = () => closeSheet();
+    $('ppOk').onclick = () => {
+      done = true; closeSheet(true);
+      resolve(all.filter((x) => sel.has(x.id)).map((x) => ({ p: x, info: [S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · ') })));
+    };
+    upd();
+  });
+}
+/** Trang Gia phả: tạo link nhờ điền bằng cách chọn nhiều người */
+async function collectPickPeople() {
+  if (!S.A || !S.persons.length) return toast('Gia phả chưa có ai – hãy thêm người trước', 4000);
+  const list = await pickPeople();
+  if (!list || !list.length) return;
+  const v = await ask({ title: 'Tạo link nhờ điền', msg: `Link gồm <b>${Math.min(list.length, 300)} người</b> đã chọn. Không cần tài khoản – bạn duyệt rồi mới vào gia phả.`,
+    fields: [{ id: 'ad', type: 'select', value: '1', ph: 'Thêm người mới', options: [['1', 'Cho thêm người mới (con, vợ/chồng)'], ['0', 'Không cho thêm người mới']] },
+      { id: 'd', type: 'select', value: '7', ph: 'Thời hạn', options: DAYS }], ok: 'Tạo link' });
+  if (!v) return;
+  busy('Đang tạo link…');
+  let code;
+  try { code = await D.createCollectLink(S.tree, list, { scope: 'pick', allowAdd: v.ad === '1', days: Number(v.d) }); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
+  busy();
+  showShareSheet({ title: 'Link nhờ điền thông tin', url: D.collectLinkUrl(code), expiresAt: Date.now() + Number(v.d) * 864e5,
+    text: `Nhờ cả nhà kiểm tra, bổ sung thông tin gia phả ${S.tree.name}: ai thấy tên mình thì bấm vào sửa, thêm vợ/chồng, con`,
+    note: `Gồm <b>${list.length} người</b> đã chọn${v.ad === '1' ? ' · được thêm người mới' : ''}. Người nhận <b>không cần đăng nhập</b>; bạn duyệt ở <b>Duyệt thông tin</b>.` });
 }
 
 /** Trang cho người mở link (không cần tài khoản): danh sách thành viên → form từng người; thêm người mới */
@@ -1165,8 +1212,9 @@ async function renderCollect(code, focus) {
   $('gate').innerHTML = `<div class="gbox wide" style="text-align:left">
     <div style="text-align:center"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div>
       <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(L.clanName || L.treeName)}</p>
-      <p class="gs">Nhờ bạn kiểm tra, bổ sung thông tin <b style="color:var(--text)">gia đình ${esc(L.name)}</b>. Bấm vào từng người để sửa. Không cần tài khoản – người quản lý gia phả sẽ duyệt.</p></div>
-    <div class="panel">${L.persons.map((id) => { const sn = L.snaps[id] || {}, done = mine.get(id); return `<div class="item" data-ck="${esc(id)}">
+      <p class="gs">Nhờ bạn kiểm tra, bổ sung thông tin <b style="color:var(--text)">${L.scope === 'pick' ? 'các thành viên gia phả ' + esc(L.treeName) : 'gia đình ' + esc(L.name)}</b>. Tìm tên mình hoặc người thân, bấm vào để sửa${L.allowAdd ? '; thêm vợ/chồng, con ở nút dưới cùng' : ''}. Không cần tài khoản – người quản lý gia phả sẽ duyệt.</p></div>
+    ${L.persons.length > 5 ? '<div class="search" style="margin-bottom:10px"><i class="fa-solid fa-magnifying-glass"></i><input id="ckQ" placeholder="Tìm tên mình hoặc người thân (gõ không dấu được)" autocomplete="off"></div>' : ''}
+    <div class="panel" id="ckList">${L.persons.map((id) => { const sn = L.snaps[id] || {}, done = mine.get(id); return `<div class="item" data-ck="${esc(id)}">
       <div class="ic ${sn.gender === 'f' ? 'f' : 'm'}">${sn.photo ? `<img src="${esc(sn.photo)}" alt="">` : esc(initials(sn.name))}</div>
       <div class="t"><b>${esc(nm(id))}</b><span>${esc(sn.info || '')}</span></div>${done ? '<span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span>' : '<i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i>'}</div>`; }).join('')}
       ${added.map((x) => `<div class="item" data-ckn="${esc(x.key)}"><div class="ic ok"><i class="fa-solid fa-user-plus"></i></div><div class="t"><b>${esc(x.personName || 'Người mới')}</b><span>Người mới – ${x.rel.kind === 'child' ? 'con' : 'vợ/chồng'} của ${esc(nm(x.rel.of))}</span></div><span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span></div>`).join('')}</div>
@@ -1174,6 +1222,7 @@ async function renderCollect(code, focus) {
     <p class="note" style="text-align:center"><i class="fa-regular fa-clock"></i> Link hết hạn lúc ${esc(fmtTime(L.expiresAt))}</p></div>`;
   $('gate').scrollTop = 0;
   $('gate').querySelectorAll('[data-ck]').forEach((el) => (el.onclick = () => collectForm(L, mine, { key: el.dataset.ck, person: el.dataset.ck })));
+  if ($('ckQ')) $('ckQ').oninput = () => { const t = fold($('ckQ').value.trim()); $('ckList').querySelectorAll('.item').forEach((el) => (el.hidden = !!t && !fold(el.innerText).includes(t))); };
   $('gate').querySelectorAll('[data-ckn]').forEach((el) => { const x = mine.get(el.dataset.ckn); el.onclick = () => collectForm(L, mine, { key: x.key, person: '', rel: x.rel }); });
   if ($('ckAdd')) $('ckAdd').onclick = async () => {
     const v = await ask({ title: 'Thêm người mới', msg: 'Người mới sẽ được thêm vào gia phả sau khi người quản lý duyệt.',
@@ -1390,7 +1439,7 @@ function renderTrees(m) {
     <div class="tgrid">${own.map((t, i) => { const c = COLORS[i % COLORS.length]; return `<div class="tcard" data-t="${esc(t.id)}" style="--c1:${c[0]};--c2:${c[1]}">
       <div class="tn1">${esc(t.name)}</div><div class="tn2">${S.tree && S.tree.id === t.id ? 'Đang mở' : 'Bấm để mở'}</div><i class="fa-solid fa-sitemap tic"></i></div>`; }).join('')}
       ${!own.length ? `<button class="addtile" id="tNew"><span><i class="fa-solid fa-plus"></i>Tạo gia phả</span></button>` : ''}</div>
-    ${tree ? `<div class="sacts"><button class="abtn full" id="tSet"><i class="fa-solid fa-pen"></i>Sửa thông tin gia phả</button></div>
+    ${tree ? `<div class="sacts"><button class="abtn full" id="tSet"><i class="fa-solid fa-pen"></i>Sửa thông tin gia phả</button><button class="abtn full blue" id="tCollect"><i class="fa-solid fa-users-viewfinder"></i>Tạo link nhờ điền – chọn người</button></div>
       <div class="sec"><i class="fa-solid fa-share-nodes"></i> Chia sẻ cho dòng họ khác <span class="n"><button class="abtn sm blue" id="shAdd"><i class="fa-solid fa-qrcode"></i>Tạo link / QR</button></span></div>
       <div id="shList"><div class="empty" style="padding:16px"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
       <p class="note">Cho người ở dòng họ khác (vd con rể, con dâu) <b>xem gia phả bằng chính tài khoản của họ</b>: tạo link / mã QR → gửi Zalo hoặc cho quét → người đó đăng nhập và bấm <b>Nhận</b>. Bấm <b>Rút</b> là mất quyền ngay.</p>` : ''}
@@ -1398,6 +1447,7 @@ function renderTrees(m) {
   m.querySelectorAll('[data-t]').forEach((el) => (el.onclick = () => { openTree(el.dataset.t).then(() => go('tree')); }));
   if ($('tNew')) $('tNew').onclick = newTree;
   if ($('tSet')) $('tSet').onclick = async () => { if (!S.tree || S.tree.id !== tree.id) await openTree(tree.id); treeSettings(); };
+  if ($('tCollect')) $('tCollect').onclick = async () => { if (!S.tree || S.tree.id !== tree.id) await openTree(tree.id); collectPickPeople(); };
   if (!tree) return;
   const shareSheet = (L) => showShareSheet({ title: 'Chia sẻ gia phả', url: D.treeShareLink(L.code), expiresAt: L.expiresAt,
     text: `Mời xem gia phả "${tree.name}" (${D.clan.name}) trên app Gia phả`,

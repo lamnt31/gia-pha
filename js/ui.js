@@ -56,7 +56,7 @@ export function pick({ title = 'Chọn', options, value }) {
     let el = $('picker');
     if (!el) { el = document.createElement('div'); el.id = 'picker'; el.className = 'modal picker'; document.body.appendChild(el); }
     const many = options.length > 8;
-    el.innerHTML = `<div class="mbox"><div class="grab"></div><h3>${esc(title)}</h3>
+    el.innerHTML = `<div class="mbox ${many ? 'tallbox' : ''}"><div class="grab"></div><h3>${esc(title)}</h3>
       ${many ? '<div class="search pks"><i class="fa-solid fa-magnifying-glass"></i><input id="pkq" placeholder="Tìm…" autocomplete="off"></div>' : ''}
       <div class="pklist">${options.map(([v, l]) => `<button type="button" class="pkopt ${String(v) === String(value) ? 'on' : ''}" data-v="${esc(v)}"><span>${esc(l)}</span>${String(v) === String(value) ? '<i class="fa-solid fa-check"></i>' : ''}</button>`).join('')}</div>
       <div class="macts one"><button type="button" class="abtn" id="pkx">Đóng</button></div></div>`;
@@ -113,6 +113,7 @@ let beforeClose = null;     // hàm trả về false để chặn đóng (vd for
 export function openSheet(html, opts = {}) {
   beforeClose = opts.beforeClose || null;
   sheetReset();
+  $('sheet').classList.toggle('fixh', !!opts.fixed);   // danh sách có ô tìm: giữ chiều cao, lọc không co popup
   $('sheet').innerHTML = `<div class="grab"></div>${html}`;
   $('sheet').scrollTop = 0; $('sheet').classList.add('open'); $('sheetBg').classList.add('open'); lockScroll();
 }
