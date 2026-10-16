@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792133503956';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792134876578';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -521,8 +521,9 @@ const COLLECT_MAX = 300;
 export async function createCollectLink(tree, list, { scope = 'one', allowAdd = false, days = 7 } = {}) {
   const code = randomCode(), snaps = {}, persons = [];
   let budget = 600000;   // ảnh nén ~40 KB/người; giữ tài liệu < 1 MB
-  for (const { p, info } of list.slice(0, COLLECT_MAX)) {
+  for (const { p, info, fam } of list.slice(0, COLLECT_MAX)) {
     const snap = { info: info || '' };
+    if (fam && fam.length) snap.fam = fam.slice(0, 40);   // vợ/chồng, con đã có – người điền thấy để khỏi thêm trùng
     for (const k of COLLECT_FIELDS) if (p[k] !== undefined && p[k] !== null && p[k] !== '') snap[k] = p[k];
     if (snap.photo) { if (snap.photo.length > budget) delete snap.photo; else budget -= snap.photo.length; }
     snaps[p.id] = snap; persons.push(p.id);

@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792133503956';
-import * as D from './data.js?v=1792133503956';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792133503956';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792133503956';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792134876578';
+import * as D from './data.js?v=1792134876578';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792134876578';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792134876578';
 
-const APP_VER = '16/10 13:51';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 14:14';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1254,6 +1254,12 @@ async function pushSettings() {
 }
 
 // ======================= Link nhờ điền thông tin (không cần tài khoản) – 1 người, cả gia đình, cả nhánh =======================
+/** Kèm vợ/chồng, con đã có trong gia phả của từng người (gọn: tên, quan hệ, giới, năm sinh) → trang nhờ điền hiện ra để khỏi thêm trùng */
+function withFam(list) {
+  const yr = (p) => yearOf(p.birthSolar) || yearOf(p.birthLunar) || 0;
+  const one = (x, k) => { const o = { n: pname(x), k, g: x.gender === 'f' ? 'f' : 'm' }; if (yr(x)) o.y = yr(x); if (isDead(x)) o.d = 1; return o; };
+  return list.map((it) => ({ ...it, fam: [...(it.p.spouseIds || []).map(byId).filter(Boolean).map((x) => one(x, 's')), ...[...S.A.allKids(it.p.id)].sort(byGen).map((x) => one(x, 'c'))] }));
+}
 /** Thành viên trong phạm vi: one = 1 người; family = + vợ/chồng + các con; branch = + vợ/chồng + con cháu mọi đời (kèm vợ/chồng) */
 function collectScope(p, scope) {
   const out = [], seen = new Set();
@@ -1278,7 +1284,7 @@ async function collectLinkFor(p) {
   if (list.length > 300) toast('Nhánh quá lớn – link chỉ gồm 300 người đầu', 4000);
   busy('Đang tạo link…');
   let code;
-  try { code = await D.createCollectLink(S.tree, list, { scope: v.sc, allowAdd: v.ad === '1', days: Number(v.d) }); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
+  try { code = await D.createCollectLink(S.tree, v.ad === '1' ? withFam(list) : list, { scope: v.sc, allowAdd: v.ad === '1', days: Number(v.d) }); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
   busy();
   const who = v.sc === 'one' ? pname(p) : `gia đình ${pname(p)} (${list.length} người)`;
   showShareSheet({ title: 'Link nhờ điền thông tin', url: D.collectLinkUrl(code), expiresAt: Date.now() + Number(v.d) * 864e5,
@@ -1367,7 +1373,7 @@ async function collectPickPeople() {
   if (!v) return;
   busy('Đang tạo link…');
   let code;
-  try { code = await D.createCollectLink(S.tree, list, { scope: 'pick', allowAdd: v.ad === '1', days: Number(v.d) }); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
+  try { code = await D.createCollectLink(S.tree, v.ad === '1' ? withFam(list) : list, { scope: 'pick', allowAdd: v.ad === '1', days: Number(v.d) }); } catch (e) { busy(); return toast(D.errMsg(e), 4000); }
   busy();
   showShareSheet({ title: 'Link nhờ điền thông tin', url: D.collectLinkUrl(code), expiresAt: Date.now() + Number(v.d) * 864e5,
     text: `Nhờ cả nhà kiểm tra, bổ sung thông tin gia phả ${S.tree.name}: ai thấy tên mình thì bấm vào sửa, thêm vợ/chồng, con`,
@@ -1386,15 +1392,17 @@ async function renderCollect(code, focus) {
   if (focus) return collectForm(L, mine, focus);
   const nm = (id) => (L.snaps[id] && L.snaps[id].name) || 'Chưa rõ tên';
   const added = [...mine.values()].filter((x) => !x.person);
+  const relLab = (x) => (x.rel.kind === 'child' ? 'Con' : (x.data && x.data.gender === 'f') ? 'Vợ' : (x.data && x.data.gender === 'm') ? 'Chồng' : 'Vợ/chồng');
+  // người mới bạn đã thêm hiện ngay dưới người liên quan
+  const addedRows = (of) => added.filter((x) => x.rel && x.rel.of === of).map((x) => `<div class="item sub" data-ckn="${esc(x.key)}"><div class="ic ok"><i class="fa-solid fa-user-plus"></i></div><div class="t"><b>${esc(x.personName || 'Người mới')}</b><span>${relLab(x)} của ${esc(nm(of))} · người mới</span></div><span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span></div>`).join('');
   $('gate').innerHTML = `<div class="gbox wide" style="text-align:left">
     <div style="text-align:center"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div>
       <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(L.clanName || L.treeName)}</p>
-      <p class="gs">Nhờ bạn kiểm tra, bổ sung thông tin <b style="color:var(--text)">${L.scope === 'pick' ? 'các thành viên gia phả ' + esc(L.treeName) : 'gia đình ' + esc(L.name)}</b>. Tìm tên mình hoặc người thân, bấm vào để sửa${L.allowAdd ? '; thêm vợ/chồng, con ở nút dưới cùng' : ''}. Không cần tài khoản – người quản lý gia phả sẽ duyệt.</p></div>
+      <p class="gs">Nhờ bạn kiểm tra, bổ sung thông tin <b style="color:var(--text)">${L.scope === 'pick' ? 'các thành viên gia phả ' + esc(L.treeName) : 'gia đình ' + esc(L.name)}</b>. Tìm tên mình hoặc người thân, bấm vào để sửa${L.allowAdd ? ' và thêm vợ/chồng, con' : ''}. Không cần tài khoản – người quản lý gia phả sẽ duyệt.</p></div>
     ${L.persons.length > 5 ? '<div class="search" style="margin-bottom:10px"><i class="fa-solid fa-magnifying-glass"></i><input id="ckQ" placeholder="Tìm tên mình hoặc người thân (gõ không dấu được)" autocomplete="off"></div>' : ''}
     <div class="panel" id="ckList">${L.persons.map((id) => { const sn = L.snaps[id] || {}, done = mine.get(id); return `<div class="item" data-ck="${esc(id)}">
       <div class="ic ${sn.gender === 'f' ? 'f' : 'm'}">${sn.photo ? `<img src="${esc(sn.photo)}" alt="">` : esc(initials(sn.name))}</div>
-      <div class="t"><b>${esc(nm(id))}</b><span>${esc(sn.info || '')}</span></div>${done ? '<span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span>' : '<i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i>'}</div>`; }).join('')}
-      ${added.map((x) => `<div class="item" data-ckn="${esc(x.key)}"><div class="ic ok"><i class="fa-solid fa-user-plus"></i></div><div class="t"><b>${esc(x.personName || 'Người mới')}</b><span>Người mới – ${x.rel.kind === 'child' ? 'con' : 'vợ/chồng'} của ${esc(nm(x.rel.of))}</span></div><span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span></div>`).join('')}</div>
+      <div class="t"><b>${esc(nm(id))}</b><span>${esc(sn.info || '')}</span></div>${done ? '<span class="when ok"><i class="fa-solid fa-check"></i> Đã gửi</span>' : '<i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i>'}</div>${addedRows(id)}`; }).join('')}</div>
     ${L.allowAdd ? '<div class="sacts"><button class="abtn full" id="ckAdd"><i class="fa-solid fa-user-plus"></i>Thêm người mới (con, vợ/chồng)</button></div>' : ''}
     <p class="note" style="text-align:center"><i class="fa-regular fa-clock"></i> Link hết hạn lúc ${esc(fmtTime(L.expiresAt))}</p></div>`;
   $('gate').scrollTop = 0;
@@ -1409,20 +1417,36 @@ async function renderCollect(code, focus) {
   };
 }
 /** Form điền thông tin 1 người (giống hệt form sửa, có ảnh) */
-function collectForm(L, mine, { key, person, rel }, single) {
+function collectForm(L, mine, { key, person, rel, toFam }, single) {
   const prev = mine.get(key), sn = (person && L.snaps[person]) || {};
   const relName = rel && ((L.snaps[rel.of] || {}).name || 'Chưa rõ tên');
   const d = { gender: rel && rel.kind === 'spouse' ? ((L.snaps[rel.of] || {}).gender === 'f' ? 'm' : 'f') : 'm', alive: true, ...sn, ...((prev && prev.data) || {}) };
   let photo = d.photo || '';
   const who = person ? (sn.name || 'Chưa rõ tên') : `Người mới – ${rel.kind === 'child' ? 'con' : 'vợ/chồng'} của ${relName}`;
   const me0 = store('collectFrom') || {};
+  // vợ/chồng, con (người mới) bạn đã thêm cho người này – bấm để sửa lại
+  const canAdd = person && L.allowAdd && !single;
+  const fam = canAdd ? [...mine.values()].filter((x) => !x.person && x.rel && x.rel.of === person) : [];
+  const famLab = (x) => (x.rel.kind === 'child' ? 'Con' : x.data && x.data.gender === 'f' ? 'Vợ' : x.data && x.data.gender === 'm' ? 'Chồng' : 'Vợ/chồng');
+  const have = canAdd ? sn.fam || [] : [];   // đã có trong gia phả (chỉ link được thêm người mới mới có)
+  const haveLab = (x) => (x.k === 'c' ? 'Con' : x.g === 'f' ? 'Vợ' : 'Chồng');
+  const famHtml = canAdd ? `<div class="fsec"><i class="fa-solid fa-people-roof"></i>Vợ/chồng, con</div>
+    ${have.length ? `<p class="note" style="margin:4px 0 6px">Đã có trong gia phả – <b>không cần thêm lại</b>:</p>
+    <div class="panel" id="cHave">${have.map((x) => `<div class="item" style="cursor:default"><div class="ic ${x.g === 'f' ? 'f' : 'm'}">${esc(initials(x.n))}</div><div class="t"><b>${esc(x.n)}</b><span>${haveLab(x)}${x.y ? ' · sinh ' + x.y : ''}${x.d ? ' · đã mất' : ''}</span></div><span class="when info">Đã có</span></div>`).join('')}</div>` : ''}
+    <p class="note" style="margin:8px 0 6px">${have.length ? 'Còn thiếu ai thì thêm' : 'Thêm vợ/chồng, con còn thiếu của <b>' + esc(sn.name || 'người này') + '</b>'}. Mỗi người thêm xong sẽ hiện ở đây – bấm để sửa lại.</p>
+    ${fam.length ? `<div class="panel" id="cFam">${fam.map((x) => `<div class="item" data-fam="${esc(x.key)}"><div class="ic ${x.data && x.data.gender === 'f' ? 'f' : 'm'}">${x.data && x.data.photo ? `<img src="${esc(x.data.photo)}" alt="">` : esc(initials(x.personName))}</div>
+      <div class="t"><b>${esc(x.personName || 'Người mới')}</b><span>${famLab(x)}${x.data && x.data.birthSolar ? ' · sinh ' + esc(x.data.birthSolar) : ''} · ${x.status === 'open' ? 'chờ duyệt' : 'đã xử lý'}</span></div><i class="fa-solid fa-pen" style="color:var(--muted)"></i></div>`).join('')}</div>` : ''}
+    <div class="sacts" style="margin-top:8px"><button type="button" class="abtn" id="cAddSp"><i class="fa-solid fa-ring"></i>Thêm ${sn.gender === 'f' ? 'chồng' : 'vợ'}</button><button type="button" class="abtn" id="cAddKid"><i class="fa-solid fa-child"></i>Thêm con</button></div>` : '';
+  // người mới → nút quay về người liên quan; người có sẵn → danh sách
+  const backTo = !person && rel && L.persons.includes(rel.of) && !(L.persons.length === 1 && !L.allowAdd) ? rel.of : '';
   $('gate').innerHTML = `<form class="gbox wide" id="cf" style="text-align:left">
-    ${single ? '' : '<button type="button" class="linkbtn" id="cBack"><i class="fa-solid fa-arrow-left"></i> Danh sách gia đình</button>'}
+    ${single ? '' : backTo ? `<button type="button" class="linkbtn" id="cBack"><i class="fa-solid fa-arrow-left"></i> ${esc(relName)}</button>` : '<button type="button" class="linkbtn" id="cBack"><i class="fa-solid fa-arrow-left"></i> Danh sách gia đình</button>'}
     <div style="text-align:center"><div class="lock"><i class="fa-solid fa-sitemap"></i></div><div class="gt">Gia phả</div>
       <p class="gclan"><i class="fa-solid fa-landmark"></i> ${esc(L.clanName || L.treeName)}</p></div>
     <p class="gs" style="text-align:center">${person ? `Kiểm tra và bổ sung thông tin của <b style="color:var(--text)">${esc(who)}</b>` : `<b style="color:var(--text)">${esc(who)}</b>`}. Không cần tài khoản. Người quản lý gia phả sẽ xem và duyệt.</p>
     ${prev ? `<div class="panel" style="margin-bottom:10px"><div class="item" style="cursor:default"><div class="ic ok"><i class="fa-solid fa-check"></i></div><div class="t"><b>Bạn đã gửi trước đó</b><span>${prev.status === 'open' ? 'Đang chờ duyệt – có thể sửa và gửi lại' : 'Đã được xử lý'}</span></div></div></div>` : ''}
     ${personFieldsHtml(d)}
+    ${famHtml}
     <div class="fsec"><i class="fa-solid fa-user-pen"></i>Người gửi</div>
     <p class="note" style="margin:4px 0 0">Không bắt buộc – giúp người quản lý gia phả biết <b>ai cung cấp thông tin</b> (khi nhiều người cùng điền) và liên hệ hỏi lại nếu cần.</p>
     <div class="fgrid">
@@ -1434,7 +1458,18 @@ function collectForm(L, mine, { key, person, rel }, single) {
   </form>`;
   $('gate').scrollTop = 0;
   bindPersonFields($('gate'), d, (ph) => { photo = ph; });
-  if ($('cBack')) $('cBack').onclick = () => renderCollect(L.code);
+  // đang sửa dở mà chuyển sang người khác → hỏi trước
+  let dirty = false;
+  $('cf').addEventListener('input', () => (dirty = true)); $('cf').addEventListener('change', () => (dirty = true));
+  const leave = async (go) => { if (!dirty || await ask({ title: 'Chưa gửi', msg: 'Thông tin bạn vừa sửa ở trang này <b>chưa được gửi</b>. Vẫn chuyển trang?', ok: 'Chuyển, bỏ phần sửa' })) go(); };
+  const goBack = () => (backTo ? renderCollect(L.code, { key: backTo, person: backTo, toFam: true }) : renderCollect(L.code));
+  if (toFam && $('cAddSp')) requestAnimationFrame(() => ($('cFam') || $('cAddSp')).scrollIntoView({ block: 'center' }));
+  if ($('cBack')) $('cBack').onclick = () => leave(goBack);
+  if (canAdd) {
+    $('cAddSp').onclick = () => leave(() => collectForm(L, mine, { key: D.newKey(), person: '', rel: { kind: 'spouse', of: person } }));
+    $('cAddKid').onclick = () => leave(() => collectForm(L, mine, { key: D.newKey(), person: '', rel: { kind: 'child', of: person } }));
+    $('gate').querySelectorAll('[data-fam]').forEach((el) => { const x = mine.get(el.dataset.fam); el.onclick = () => leave(() => collectForm(L, mine, { key: x.key, person: '', rel: x.rel })); });
+  }
   $('cf').onsubmit = async (e) => {
     e.preventDefault();
     const all = readPersonFields($('gate'), photo);
@@ -1446,7 +1481,7 @@ function collectForm(L, mine, { key, person, rel }, single) {
     try {
       await D.submitCollect(L, { key, person, personName: person ? sn.name || 'Chưa rõ tên' : all.name, all, from, phone, rel, existed: !!prev });
       busy();
-      if (!single) { toast('Đã gửi – cảm ơn bạn!'); return renderCollect(L.code); }
+      if (!single) { toast(backTo ? `Đã thêm ${all.name} – cảm ơn bạn!` : 'Đã gửi – cảm ơn bạn!'); return goBack(); }
       $('gate').innerHTML = `<div class="gbox"><div class="lock" style="background:var(--ok)"><i class="fa-solid fa-check"></i></div><div class="gt">Cảm ơn bạn!</div>
         <p class="gs">Thông tin về <b>${esc(who)}</b> đã được gửi. Người quản lý gia phả <b>${esc(L.clanName || L.treeName)}</b> sẽ xem và duyệt.</p>
         <button class="go" id="cAgain" style="background:var(--card-solid);color:var(--accent);border:1px solid var(--ring)"><i class="fa-solid fa-pen"></i>Sửa lại thông tin đã gửi</button></div>`;
