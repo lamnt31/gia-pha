@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792131808033';
-import * as D from './data.js?v=1792131808033';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792131808033';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792131808033';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792132018824';
+import * as D from './data.js?v=1792132018824';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792132018824';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792132018824';
 
-const APP_VER = '16/10 13:23';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 13:26';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -458,7 +458,7 @@ function renderTreeTab(fromData) {
     q.oninput = () => {
       const t = fold(q.value.trim()); $('tqx').hidden = !t;
       if (!t) { res.hidden = true; return; }
-      const hit = S.persons.filter((p) => fold(pname(p) + ' ' + (p.nick || '')).includes(t)).slice(0, 30);
+      const hit = S.persons.filter((p) => fold(pname(p) + ' ' + (p.nick || '')).includes(t)).sort(byGen).slice(0, 30);
       res.hidden = false;
       res.innerHTML = hit.length ? hit.map((p) => `<div class="item" data-go="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · '))}</span></div></div>`).join('') : '<div class="empty" style="padding:16px">Không tìm thấy</div>';
       res.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => { res.hidden = true; q.value = ''; $('tqx').hidden = true; jumpTo(el.dataset.go); }));
@@ -553,7 +553,7 @@ function showPerson(id, refresh) {
   S.openPerson = id; S.formOpen = false;
   const A = S.A, f = byId(p.fatherId), mo = byId(p.motherId);
   const spouses = (p.spouseIds || []).map(byId).filter(Boolean);
-  const kids = S.persons.filter((k) => k.fatherId === id || k.motherId === id).sort((a, b) => (a.order || 99) - (b.order || 99) || yearOf(a.birthSolar) - yearOf(b.birthSolar));
+  const kids = S.persons.filter((k) => k.fatherId === id || k.motherId === id).sort(byGen);
   const relBtns = (arr) => arr.map((x) => `<button class="${x.gender === 'f' ? 'f' : 'm'}" data-p="${esc(x.id)}">${esc(pname(x))}</button>`).join('');
   const bl = lunarOf(p.birthSolar), dl = lunarOf(p.deathSolar), gio = isDead(p) && gioOf(p), next = gio && nextDeathAnniversary(gio[0], gio[1]);
   const row = (ic, k, v) => (v ? `<div class="r"><i class="fa-solid ${ic}"></i><span>${k}</span><b>${v}</b></div>` : '');
@@ -957,7 +957,9 @@ const whenTxt = (n) => (n ? n + ' ngày' : 'Hôm nay');
 function upcoming(today = new Date()) {
   const gio = S.persons.filter(isDead).map((p) => { const g = gioOf(p); const n = g && nextDeathAnniversary(g[0], g[1], today); return n && { p, kind: 'gio', g, n }; }).filter(Boolean);
   const sn = S.persons.map((p) => { const n = nextBirthday(p, today); return n && { p, kind: 'sn', n }; }).filter(Boolean);
-  return { gio: gio.sort((a, b) => a.n.daysLeft - b.n.daysLeft), sn: sn.sort((a, b) => a.n.daysLeft - b.n.daysLeft) };
+  // theo ngày gần nhất; cùng ngày thì theo đời / vị trí trên cây
+  const byDay = (a, b) => a.n.daysLeft - b.n.daysLeft || byGen(a.p, b.p);
+  return { gio: gio.sort(byDay), sn: sn.sort(byDay) };
 }
 function eventItem(x) {
   const sub = x.kind === 'gio'
@@ -1236,7 +1238,7 @@ function collectScope(p, scope) {
   else if (scope === 'family') { withSpouses(p); S.A.allKids(p.id).forEach(add); }
   else if (scope === 'all') [...S.persons].sort(byGen).forEach(add);
   else { const walk = (x) => { withSpouses(x); S.A.allKids(x.id).forEach(walk); }; walk(p); }
-  return out.map((x) => ({ p: x, info: [S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · ') }));
+  return out.sort(byGen).map((x) => ({ p: x, info: [S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · ') }));
 }
 async function collectLinkFor(p) {
   const n = (sc) => collectScope(p, sc).length;
