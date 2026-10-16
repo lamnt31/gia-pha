@@ -93,9 +93,9 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   /* ===== Popup, hộp thoại, thông báo ===== */
   .sheet-bg { position: fixed; inset: 0; background: rgba(8,10,20,.62); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); z-index: 50; display: none; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; background: var(--card-solid); border-radius: 22px 22px 0 0; max-width: none; margin: 0;
-           max-height: 88vh; overflow: auto; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transform: translateY(110%); transition: transform .22s; }
+           max-height: calc(var(--vvh, 1vh) * 88); overflow: auto; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transform: translateY(110%); transition: transform .22s; }
   .sheet.open { transform: none; } .sheet-bg.open { display: block; }
-  .sheet.fixh { height: 88vh; height: 88dvh; }
+  .sheet.fixh { height: calc(var(--vvh, 1vh) * 88); }
   .sheet, .modal { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .sheet-bg, .modal, .busy { touch-action: none; }
   body.locked { position: fixed; left: 0; right: 0; overflow: hidden; }
@@ -103,7 +103,7 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-thumb { background: rgba(127,127,127,.35); border-radius: 99px; }
   @media (min-width: 900px) {
-    .sheet { left: auto; right: 0; top: 0; bottom: 0; margin: 0; width: 460px; max-width: 92vw; max-height: none; height: 100vh; height: 100dvh;
+    .sheet { left: auto; right: 0; top: 0; bottom: 0; margin: 0; width: 460px; max-width: 92vw; max-height: none; height: calc(var(--vvh, 1vh) * 100);
              border-radius: 22px 0 0 22px; padding: 22px; transform: translateX(105%); transition: transform .25s ease; box-shadow: -18px 0 40px -20px rgba(0,0,0,.35); }
     .sheet.open { transform: none; }
     .sheet .grab { display: none; }
@@ -135,13 +135,13 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .modal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: flex-end; justify-content: center; background: rgba(8,10,20,.62);
            -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
   .modal.picker { z-index: 85; }
-  .mbox { width: 100%; max-width: none; max-height: 88vh; overflow: auto; touch-action: pan-y; background: var(--card-solid); border-radius: 22px 22px 0 0;
+  .mbox { width: 100%; max-width: none; max-height: calc(var(--vvh, 1vh) * 88); overflow: auto; touch-action: pan-y; background: var(--card-solid); border-radius: 22px 22px 0 0;
           padding: 10px 18px calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow-hover); animation: sheetUp .22s ease both; }
   @keyframes sheetUp { from { transform: translateY(100%); } }
   @keyframes sheetIn { from { transform: translateX(100%); } }
   @media (min-width: 900px) {
     .modal { justify-content: flex-end; align-items: stretch; }
-    .mbox { width: 460px; max-width: 92vw; max-height: none; height: 100vh; height: 100dvh; border-radius: 22px 0 0 22px; padding: 22px; animation-name: sheetIn; }
+    .mbox { width: 460px; max-width: 92vw; max-height: none; height: calc(var(--vvh, 1vh) * 100); border-radius: 22px 0 0 22px; padding: 22px; animation-name: sheetIn; }
     .mbox .grab { display: none; }
   }
   .mbox h3 { margin: 0 0 6px; font-size: var(--fs-2xl); }
@@ -152,11 +152,11 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .macts.one { grid-template-columns: 1fr; }
   .pklist { display: flex; flex-direction: column; margin: 6px -6px 0; }
   /* danh sách dài (có ô tìm): popup cố định chiều cao, chỉ phần danh sách cuộn → lọc không làm popup co lại */
-  .mbox.tallbox { height: 82vh; height: 82dvh; display: flex; flex-direction: column; overflow: hidden; }
+  .mbox.tallbox { height: calc(var(--vvh, 1vh) * 82); display: flex; flex-direction: column; overflow: hidden; }
   .mbox.tallbox .pklist { flex: 1; min-height: 0; overflow-y: auto; justify-content: flex-start; }
   .mbox.tallbox > :not(.pklist) { flex: 0 0 auto; }   /* ô tìm (.search có flex:1 cho hàng ngang) không được giãn dọc */
   .sheet.fixh .search { flex: 0 0 auto; }
-  @media (min-width: 900px) { .mbox.tallbox { height: 100vh; height: 100dvh; } }
+  @media (min-width: 900px) { .mbox.tallbox { height: calc(var(--vvh, 1vh) * 100); } }
   .pplist .item { cursor: pointer; }
   .pplist input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: 0 0 auto; }
   .pkopt { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 12px; border: 0; border-radius: 12px; background: none;
@@ -320,6 +320,10 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .tn .sub { font-size: 11.5px; fill: var(--muted); }
   .tn .gen { font-size: 10.5px; fill: var(--accent); font-weight: 600; }
   .tn { cursor: pointer; }
+  /* vô hậu (đứt mạch): viền xám đỏ + biểu tượng */
+  .tn.noheir rect { stroke: #c2410c; stroke-opacity: .55; }
+  .tn .nh text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px; fill: #dc2626; opacity: .8; }
+  .tag.nohtag { background: var(--bad-bg); color: var(--bad); }
   .tn .lk { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px; fill: var(--accent); }
   .lkrow small { display: block; color: var(--muted); font-size: var(--fs-sm); white-space: normal; }
   .lkrow b { display: block; }
@@ -407,6 +411,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792124409204"></script>
+<script type="module" src="js/app.js?v=1792124649281"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792124409204';
+import { esc } from './ui.js?v=1792124649281';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -60,7 +60,10 @@ export function analyze(persons, anchorId) {
     return g >= 1 ? `Đời ${g}` : g === 0 ? 'Thượng tổ' : `Thượng tổ ${1 - g}`;
   };
   const shown = (id) => (gen.has(id) ? gen.get(id) - base : null);
-  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has };
+  const isDeadP = (p) => p.alive === false || !!(p.deathSolar || p.deathLunar);
+  /** Vô hậu (đứt mạch): nam, đã mất, người trong dòng, không có con trai nào (con trai nuôi vẫn tính là có người nối dõi) */
+  const noHeir = (id) => { const p = byId.get(id); return !!p && p.gender !== 'f' && isDeadP(p) && !spouseIn.has(id) && !(allKids.get(id) || []).some((k) => k.gender !== 'f'); };
+  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir };
 }
 
 /** Kiểm tra gán cha/mẹ có tạo vòng lặp không: newParent không được là con cháu của personId */
@@ -141,10 +144,11 @@ function fit(t, maxW, px, minPx, w = 700) {
 export function renderTree(svg, L, A, selectedId, linked = new Set()) {
   const node = (n) => {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
-    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
+    const nh = n.kind === 'blood' && A.noHeir(p.id), icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0);
+    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''}`;
     const name = p.name || 'Chưa rõ tên';
     const x = p.photo ? 48 : 12, room = NW - x - 8;
-    const [nm, nf] = fit(name, room - (linked.has(p.id) ? 14 : 0), 13.5, 11.5);
+    const [nm, nf] = fit(name, room - icons * 14, 13.5, 11.5);
     const [gen] = fit(A.label(p.id) + (n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''), room, 10.5, 10.5, 600);
     return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})">
       <title>${esc(name)}</title>
@@ -154,6 +158,7 @@ export function renderTree(svg, L, A, selectedId, linked = new Set()) {
       <text x="${x}" y="42" class="sub">${esc(years(p))}</text>
       <text x="${x}" y="57" class="gen">${esc(gen)}</text>
       ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
+      ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
     </g>`;
   };

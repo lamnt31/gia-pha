@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792124409204';
-import * as D from './data.js?v=1792124409204';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792124409204';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792124409204';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792124649281';
+import * as D from './data.js?v=1792124649281';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792124649281';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792124649281';
 
-const APP_VER = '16/10 11:20';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 11:24';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -518,7 +518,7 @@ function showPerson(id, refresh) {
   const html = `
     <div class="phead">${avatar(p, 'ph')}<div style="min-width:0"><h2>${esc(pname(p))}</h2>
       <div class="pg">${esc(A.label(id))}${A.spouseIn.has(id) ? (p.gender === 'f' ? ' · con dâu' : ' · con rể') : ''}${S.tree.anchorId === id ? ' · <i class="fa-solid fa-flag"></i> mốc đời 1' : ''}</div>
-      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}</div></div></div>
+      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
     <div class="rows">
       ${row('fa-venus-mars', 'Giới tính', p.gender === 'f' ? 'Nữ' : 'Nam')}
       ${row('fa-cake-candles', 'Sinh', p.birthSolar || p.birthLunar ? `${esc(p.birthSolar || '')}${bl ? `<small>Âm lịch: ${formatLunar(bl)}</small>` : p.birthLunar ? `<small>Âm lịch: ${esc(p.birthLunar)}</small>` : ''}` : '')}
@@ -832,7 +832,7 @@ function renderList(m) {
     <div class="listbar">
       <div style="display:flex;gap:8px"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="lq" placeholder="Tìm tên (gõ không dấu cũng được)" value="${esc(S.q)}" autocomplete="off"><button class="clr" id="lqx" ${S.q ? '' : 'hidden'}><i class="fa-solid fa-xmark"></i></button></div>
         <button class="ibtn" id="csv" title="Xuất Excel (CSV)"><i class="fa-solid fa-file-excel"></i></button>${canEdit() ? '<button class="ibtn" id="ladd" title="Thêm người"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div>
-      <div class="filters">${[['all', 'Tất cả'], ['alive', 'Còn sống'], ['dead', 'Đã mất'], ['m', 'Nam'], ['f', 'Nữ'], ['loose', 'Chưa nối']].map(([k, n]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
+      <div class="filters">${[['all', 'Tất cả'], ['alive', 'Còn sống'], ['dead', 'Đã mất'], ['m', 'Nam'], ['f', 'Nữ'], ['noheir', 'Vô hậu'], ['loose', 'Chưa nối']].map(([k, n]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
         <select class="chip" id="lgen" aria-label="Lọc theo đời"><option value="">Mọi đời</option>${gens.map((g) => `<option value="${g}" ${String(S.gen) === String(g) ? 'selected' : ''}>${esc(g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g))}</option>`).join('')}</select></div>
     </div>
     <div class="panel" id="lres"></div></div>`;
@@ -840,7 +840,7 @@ function renderList(m) {
     const t = fold(S.q.trim());
     const loose = (p) => !S.A.gen.has(p.id) || (!S.A.has(p.fatherId) && !S.A.has(p.motherId) && !(p.spouseIds || []).some(S.A.has) && !S.persons.some((k) => k.fatherId === p.id || k.motherId === p.id));
     const list = S.persons.filter((p) => (!t || fold([p.name, p.nick, p.alias, p.branch].join(' ')).includes(t))
-      && (S.filter === 'all' || (S.filter === 'alive' && !isDead(p)) || (S.filter === 'dead' && isDead(p)) || (S.filter === 'm' && p.gender !== 'f') || (S.filter === 'f' && p.gender === 'f') || (S.filter === 'loose' && loose(p)))
+      && (S.filter === 'all' || (S.filter === 'alive' && !isDead(p)) || (S.filter === 'dead' && isDead(p)) || (S.filter === 'm' && p.gender !== 'f') || (S.filter === 'f' && p.gender === 'f') || (S.filter === 'loose' && loose(p)) || (S.filter === 'noheir' && S.A.noHeir(p.id)))
       && (S.gen === '' || String(S.A.shown(p.id)) === String(S.gen)))
       .sort(byGen);
     $('lres').innerHTML = list.length ? list.slice(0, 500).map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p), p.branch].filter(Boolean).join(' · '))}</span></div>${isDead(p) ? '<span class="when info">Đã mất</span>' : ''}</div>`).join('')

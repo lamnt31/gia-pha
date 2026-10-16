@@ -143,7 +143,21 @@ function sheetSwipeClose() {
   clearTimeout(SW.t); sheetMove($('sheet').offsetHeight + 40, true);
   setTimeout(() => { closeSheet(true); sheetReset(); }, 230);
 }
+// Chiều cao thật đang hiển thị → biến CSS --vvh (1%). Cập nhật khi xoay, đổi cỡ, bật bàn phím, chiếu màn hình.
+function setVvh() {
+  const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  document.documentElement.style.setProperty('--vvh', (h / 100) + 'px');
+}
+setVvh();
+addEventListener('resize', setVvh);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', setVvh);
+
 export function initSheet() {
+  // bấm vào ô nhập trong popup → cuộn ô đó ra giữa (không bị bàn phím / mép màn hình che)
+  $('sheet').addEventListener('focusin', (e) => {
+    if (!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    setTimeout(() => { try { e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) { /* trình duyệt cũ */ } }, 300);
+  });
   const sh = $('sheet');
   const onStart = (e) => {
     if (isSidePanel() || !sh.classList.contains('open') || e.touches.length !== 1) return;
