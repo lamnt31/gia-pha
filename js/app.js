@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792126479596';
-import * as D from './data.js?v=1792126479596';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792126479596';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792126479596';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792127099914';
+import * as D from './data.js?v=1792127099914';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792127099914';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792127099914';
 
-const APP_VER = '16/10 11:54';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 12:04';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -493,9 +493,24 @@ function drawTree() {
   const lg = $('blegend');
   if (lg) {
     const heads = colorOn ? S.A.branchHeads.filter((h) => byId(h.id) && byId(h.id).gender !== 'f') : [];
+    // các đời có thể chọn: từ đời của gốc nhánh tới đời cuối còn người có con (gốc nhánh con)
+    const isRoot = (p) => p.gender !== 'f' && S.A.has(p.id) && !S.A.spouseIn.has(p.id) && S.A.kids(p.id).length;
+    const g0 = heads.length ? S.A.shown(heads[0].id) : null;
+    const gens = g0 === null ? [] : [...new Set(S.persons.filter(isRoot).map((p) => S.A.shown(p.id)))].filter((g) => typeof g === 'number' && g > g0).sort((a, b) => a - b);
+    if (!gens.includes(S.bgen)) S.bgen = null;
+    const glab = (g) => (g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g));
+    const list = S.bgen === null ? heads.map((h) => ({ id: h.id, c: branchColor(h.idx) }))
+      : S.persons.filter((p) => isRoot(p) && S.A.shown(p.id) === S.bgen).sort(byGen).map((p) => ({ id: p.id, c: S.A.branch.has(p.id) ? branchColor(S.A.branch.get(p.id)) : '#94a3b8' }));
     lg.hidden = heads.length < 2;
-    lg.innerHTML = heads.map((h) => `<button data-bh="${esc(h.id)}"><i style="background:${branchColor(h.idx)}"></i>${esc(pname(byId(h.id)))}</button>`).join('');
+    lg.innerHTML = (gens.length ? `<button class="bgen" id="bgen"><i class="fa-solid fa-layer-group"></i>${esc(glab(S.bgen === null ? g0 : S.bgen))}<i class="fa-solid fa-chevron-down"></i></button>` : '')
+      + list.map((h) => `<button data-bh="${esc(h.id)}"><i style="background:${h.c}"></i>${esc(pname(byId(h.id)))}</button>`).join('');
     lg.querySelectorAll('[data-bh]').forEach((b) => (b.onclick = () => jumpTo(b.dataset.bh, false)));
+    if ($('bgen')) $('bgen').onclick = async () => {
+      const v = await pick({ title: 'Xem gốc nhánh ở đời', value: S.bgen === null ? '' : String(S.bgen),
+        options: [['', `${glab(g0)} – các nhánh chính (${heads.length})`], ...gens.map((g) => [String(g), `${glab(g)} – ${S.persons.filter((p) => isRoot(p) && S.A.shown(p.id) === g).length} gốc nhánh`])] });
+      if (v === null) return;
+      S.bgen = v === '' ? null : Number(v); drawTree(); lg.scrollLeft = 0;
+    };
   }
 }
 // tên trên cây được đo theo font Be Vietnam Pro → vẽ lại khi font tải xong

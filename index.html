@@ -343,6 +343,8 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .blegend button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 99px; border: 1px solid var(--line);
                     background: var(--card-solid); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
   .blegend i { width: 10px; height: 10px; border-radius: 50%; }
+  .blegend .bgen { background: #0070f4; color: #fff; border-color: #0070f4; position: sticky; left: 0; z-index: 1; }
+  .blegend .bgen i { width: auto; height: auto; border-radius: 0; font-size: .85em; }
   /* vô hậu (đứt mạch): viền xám đỏ + biểu tượng */
   .tn.noheir rect { stroke: #c2410c; stroke-opacity: .55; }
   .tn .nh text { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 11px; fill: #dc2626; opacity: .8; }
@@ -434,6 +436,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792126479596"></script>
+<script type="module" src="js/app.js?v=1792127099914"></script>
 </body>
 </html>
