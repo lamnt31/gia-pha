@@ -224,6 +224,9 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
         background: var(--accent); display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
   .go:disabled { opacity: .6; }
   .fld label small { font-weight: 500; }
+  .bkrow label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .bkrow .bk { width: 18px; height: 18px; margin: 0; accent-color: #0070f4; }
+  .bkrow:has(.bk:checked) label { color: var(--text); }
   .err { color: var(--bad); font-size: var(--fs-md); margin-top: 12px; min-height: 21px; }
   .note { font-size: var(--fs-base); color: var(--muted); margin-top: 12px; }
   .instbtn { width: 100%; height: 44px; margin-top: 6px; border-radius: 14px; border: 1.5px dashed var(--accent); background: var(--ring); color: var(--accent);
@@ -307,6 +310,11 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .tsearch { position: absolute; left: 12px; right: 12px; top: 10px; z-index: 3; max-width: 420px; touch-action: pan-y; cursor: auto; }
   .tsearch .sres { margin-top: 6px; max-height: 50vh; overflow: auto; }
   .links path { fill: none; stroke: var(--link); stroke-width: 1.6; }
+  /* một người nhiều vợ: mỗi vợ một màu đường nối xuống nhóm con */
+  .links path.lw0 { stroke: #db2777; stroke-width: 2; }
+  .links path.lw1 { stroke: #7c3aed; stroke-width: 2; stroke-dasharray: 6 3; }
+  .links path.lw2 { stroke: #d97706; stroke-width: 2; stroke-dasharray: 2 3; }
+  .links path.lw3 { stroke: #0891b2; stroke-width: 2; stroke-dasharray: 8 3 2 3; }
   .tn rect { fill: var(--card-solid); stroke: var(--line); stroke-width: 1.5; }
   .tn.m rect { stroke: var(--male); fill: var(--male-bg); } .tn.f rect { stroke: var(--female); fill: var(--female-bg); }
   .tn.spouse rect { stroke-dasharray: 5 3; }
@@ -426,6 +434,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792125542704"></script>
+<script type="module" src="js/app.js?v=1792126479596"></script>
 </body>
 </html>

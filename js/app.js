@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792125542704';
-import * as D from './data.js?v=1792125542704';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792125542704';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792125542704';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792126479596';
+import * as D from './data.js?v=1792126479596';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792126479596';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792126479596';
 
-const APP_VER = '16/10 11:39';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 11:54';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -445,12 +445,13 @@ function renderTreeTab(fromData) {
       <div class="tsearch"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="tq" placeholder="Tìm người trên cây…" autocomplete="off"><button class="clr" id="tqx" hidden><i class="fa-solid fa-xmark"></i></button></div><div class="panel sres" id="tres" hidden></div></div>
       <div class="blegend" id="blegend"></div>
       <div class="tools"><button class="ibtn" id="zin" title="Phóng to"><i class="fa-solid fa-plus"></i></button><button class="ibtn" id="zout" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
-      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEdit() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
+      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEdit() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
     S.pz = panZoom($('tbox'), $('tsvg'), {
       onTap: (id) => { S.sel = id; drawTree(); showPerson(id); },
       onToggle: (id) => { S.collapsed.has(id) ? S.collapsed.delete(id) : S.collapsed.add(id); store('col_' + S.tree.id, [...S.collapsed]); drawTree(); },
     });
     $('zcol').onclick = () => { store('branchColor', store('branchColor') === false); drawTree(); toast(store('branchColor') === false ? 'Đã tắt màu theo nhánh' : 'Đã bật màu theo nhánh'); };
+    $('zgen').onclick = () => showToGen();
     $('zin').onclick = () => S.pz.zoom(1.25); $('zout').onclick = () => S.pz.zoom(0.8); $('zfit').onclick = () => S.pz.fit();
     if ($('zadd')) $('zadd').onclick = () => personForm(null, { mode: 'first' });
     const q = $('tq'), res = $('tres');
@@ -466,6 +467,21 @@ function renderTreeTab(fromData) {
   }
   drawTree();
   if (S.firstFit) { S.firstFit = false; requestAnimationFrame(() => S.pz.fit()); }
+}
+/** Hiển thị đến đời N: thu gọn mọi người ở đời N (ẩn đời N+1 trở đi), mở các đời trên. Vẫn bấm "+" để mở riêng từng nhánh */
+async function showToGen() {
+  const blood = S.persons.filter((p) => S.A.has(p.id) && !S.A.spouseIn.has(p.id) && S.A.kids(p.id).length);
+  const gens = [...new Set(S.persons.filter((p) => S.A.has(p.id)).map((p) => S.A.shown(p.id)).filter((g) => typeof g === 'number'))].sort((a, b) => a - b);
+  if (gens.length < 2) return toast('Cây mới có 1 đời');
+  const glab = (g) => (g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g));
+  const opts = [['all', 'Mở tất cả các đời'], ...gens.slice(0, -1).map((g) => [String(g), `Đến ${glab(g).toLowerCase()} (${gens.filter((x) => x <= g).length} đời)`])];
+  const v = await pick({ title: 'Hiển thị đến đời', options: opts, value: S.toGen || '' });
+  if (v === null) return;
+  S.toGen = v;
+  S.collapsed = v === 'all' ? new Set() : new Set(blood.filter((p) => S.A.shown(p.id) >= Number(v)).map((p) => p.id));
+  store('col_' + S.tree.id, [...S.collapsed]);
+  drawTree(); requestAnimationFrame(() => S.pz.fit());
+  toast(v === 'all' ? 'Đã mở tất cả các đời' : `Đang hiện đến ${glab(Number(v)).toLowerCase()} – bấm “+” dưới ô để mở riêng nhánh`);
 }
 let LAYOUT = null;
 function drawTree() {
@@ -559,6 +575,8 @@ function showPerson(id, refresh) {
       <button class="abtn" data-a="parent" ${f && mo ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i>Thêm ${!f ? 'cha' : 'mẹ'}</button>
       <button class="abtn" data-a="insert" ${f || mo ? '' : 'disabled'}><i class="fa-solid fa-arrows-up-down"></i>Chèn đời ở giữa</button>
       <button class="abtn" data-a="link"><i class="fa-solid fa-link"></i>Nối quan hệ</button>
+      ${S.A.allKids(id).length && (p.spouseIds || []).some(byId) ? `<button class="abtn full" data-a="assign"><i class="fa-solid fa-people-arrows"></i>Gán ${p.gender === 'f' ? 'cha' : 'mẹ'} cho các con (${S.A.allKids(id).length})</button>` : ''}
+      ${S.A.allKids(id).length > 1 ? `<button class="abtn full" data-a="bulk"><i class="fa-solid fa-users-gear"></i>Sửa chung cho các con (${S.A.allKids(id).length})</button>` : ''}
       <button class="abtn" data-a="collect"><i class="fa-solid fa-file-pen"></i>Nhờ người khác điền</button>
       ${isOwner() && S.tree.anchorId !== id ? '<button class="abtn" data-a="anchor"><i class="fa-solid fa-flag"></i>Đặt làm đời 1</button>' : ''}
       <button class="abtn red ${isOwner() && S.tree.anchorId !== id ? '' : 'full'}" data-a="del"><i class="fa-solid fa-trash"></i>Xóa</button>
@@ -582,6 +600,8 @@ async function personAction(p, a) {
   if (a === 'link') return linkForm(p);
   if (a === 'propose') return propose(p);
   if (a === 'locate') return showOnTree(p.id);
+  if (a === 'assign') return assignParents(p);
+  if (a === 'bulk') return bulkEdit(new Set(S.A.allKids(p.id).map((k) => k.id)));
   if (a === 'share') return shareForLink(p);
   if (a === 'collect') return collectLinkFor(p);
   if (a === 'linkcode') return linkWithCode(p);
@@ -795,7 +815,35 @@ async function save(p, data, ctx, otherId) {
   }
   await D.saveChanges(T, { adds: [add], updates }, cur);
   S.sel = nid;
+  if (ctx.mode === 'spouse') {
+    const key = of.gender === 'f' ? 'fatherId' : 'motherId';
+    if (S.A.allKids(of.id).some((k) => !byId(k[key]))) setTimeout(() => assignParents(byId(of.id), nid, true), 700);
+  }
   if (S.tab === 'tree' && S.pz) setTimeout(() => jumpTo(nid, false), 50);
+}
+
+/** Gán mẹ (với nam) / cha (với nữ) cho nhiều con một lần. preset: chọn sẵn người này cho các con đang "chưa rõ" */
+function assignParents(p, preset, afterAdd) {
+  const key = p.gender === 'f' ? 'fatherId' : 'motherId', role = p.gender === 'f' ? 'cha' : 'mẹ';
+  const sps = (p.spouseIds || []).map(byId).filter(Boolean), kids = [...S.A.allKids(p.id)].sort(byGen);
+  const ORD = ['cả', 'hai', 'ba', 'tư', 'năm', 'sáu'];
+  const spName = (x, i) => `${pname(x)}${sps.length > 1 ? (p.gender === 'f' ? ` (chồng ${i + 1})` : ` (vợ ${ORD[i] || i + 1})`) : ''}`;
+  const opts = [['', '— Chưa rõ —'], ...sps.map((x, i) => [x.id, spName(x, i)])];
+  const cur = (k) => (byId(k[key]) && sps.some((x) => x.id === k[key]) ? k[key] : (preset && !byId(k[key]) ? preset : k[key] || ''));
+  openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Gán ${role} cho các con của ${esc(pname(p))}</h2>
+    <p style="margin:0;color:var(--muted)">${afterAdd ? `Vừa thêm ${role === 'mẹ' ? 'vợ' : 'chồng'}. Các con <b>chưa có ${role}</b> đã được chọn sẵn – kiểm tra rồi bấm Lưu.` : `Chọn ${role} cho từng người con, lưu một lần.`}</p>
+    <div class="rows">${kids.map((k) => `<div class="r"><span style="flex:1;color:var(--text)">${esc(pname(k))}<small style="display:block;color:var(--muted)">${esc([S.A.label(k.id), lifeText(k)].filter(Boolean).join(' · '))}</small></span>
+      <select class="rsel" data-kid="${esc(k.id)}" aria-label="${esc(role[0].toUpperCase() + role.slice(1))} của ${esc(pname(k))}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${cur(k) === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`).join('')}</div>
+    <div class="fbar"><button type="button" class="abtn" id="asCancel">Để sau</button><button class="abtn blue" id="asOk"><i class="fa-solid fa-check"></i>Lưu</button></div>`);
+  $('asCancel').onclick = () => closeSheet(true);
+  $('asOk').onclick = async () => {
+    const updates = [];
+    $('sheet').querySelectorAll('[data-kid]').forEach((sel) => { const k = byId(sel.dataset.kid); if (k && (k[key] || '') !== sel.value) updates.push({ id: k.id, [key]: sel.value }); });
+    if (!updates.length) { closeSheet(true); return toast('Không có thay đổi'); }
+    busy('Đang lưu…');
+    try { await D.saveChanges(S.tree.id, { updates }, S.A.byId); busy(); closeSheet(true); toast(`Đã gán ${role} cho ${updates.length} người con`); }
+    catch (e) { busy(); toast(D.errMsg(e), 4000); }
+  };
 }
 
 /** Nối quan hệ giữa 2 người đã có (cha, mẹ, vợ/chồng) – dùng để gộp nhánh rời */
@@ -842,7 +890,7 @@ function renderList(m) {
     </div>
     <div class="listbar">
       <div style="display:flex;gap:8px"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="lq" placeholder="Tìm tên (gõ không dấu cũng được)" value="${esc(S.q)}" autocomplete="off"><button class="clr" id="lqx" ${S.q ? '' : 'hidden'}><i class="fa-solid fa-xmark"></i></button></div>
-        <button class="ibtn" id="csv" title="Xuất Excel (CSV)"><i class="fa-solid fa-file-excel"></i></button>${canEdit() ? '<button class="ibtn" id="ladd" title="Thêm người"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div>
+        <button class="ibtn" id="csv" title="Xuất Excel (CSV)"><i class="fa-solid fa-file-excel"></i></button>${canEdit() ? '<button class="ibtn" id="lbulk" title="Sửa nhiều người"><i class="fa-solid fa-users-gear"></i></button><button class="ibtn" id="ladd" title="Thêm người"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div>
       <div class="filters">${[['all', 'Tất cả'], ['alive', 'Còn sống'], ['dead', 'Đã mất'], ['m', 'Nam'], ['f', 'Nữ'], ['noheir', 'Vô hậu'], ['loose', 'Chưa nối']].map(([k, n]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
         <select class="chip" id="lgen" aria-label="Lọc theo đời"><option value="">Mọi đời</option>${gens.map((g) => `<option value="${g}" ${String(S.gen) === String(g) ? 'selected' : ''}>${esc(g >= 1 ? 'Đời ' + g : g === 0 ? 'Thượng tổ' : 'Thượng tổ ' + (1 - g))}</option>`).join('')}</select></div>
     </div>
@@ -865,6 +913,7 @@ function renderList(m) {
   $('lgen').onchange = () => { S.gen = $('lgen').value; draw(); };
   $('csv').onclick = exportCsv;
   if ($('ladd')) $('ladd').onclick = () => personForm(null, { mode: 'first' });
+  if ($('lbulk')) $('lbulk').onclick = () => bulkEdit();
   draw();
 }
 
@@ -1195,20 +1244,20 @@ async function collectLinkFor(p) {
 }
 
 /** Chọn nhiều người (tick) để gửi 1 link nhờ điền. preset: Set id tick sẵn. Trả về [{p, info}] hoặc null */
-function pickPeople(preset = new Set()) {
+function pickPeople(preset = new Set(), o = {}) {
   return new Promise((resolve) => {
     const all = [...S.persons].sort(byGen);
     const sel = new Set(preset);
     let done = false;
-    openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Chọn người để nhờ điền</h2>
-      <p style="margin:0;color:var(--muted)">Tick những người cần bổ sung thông tin. Gửi link vào nhóm – ai thấy tên mình thì vào sửa.</p>
+    openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(o.title || 'Chọn người để nhờ điền')}</h2>
+      <p style="margin:0;color:var(--muted)">${esc(o.sub || 'Tick những người cần bổ sung thông tin. Gửi link vào nhóm – ai thấy tên mình thì vào sửa.')}</p>
       <div class="search" style="margin:10px 0 6px"><i class="fa-solid fa-magnifying-glass"></i><input id="ppQ" placeholder="Tìm tên (gõ không dấu được)" autocomplete="off"></div>
       <div style="display:flex;gap:8px;margin-bottom:6px"><button type="button" class="abtn sm" id="ppAll">Chọn tất cả đang hiện</button><button type="button" class="abtn sm" id="ppNone">Bỏ chọn hết</button></div>
       <div class="panel pplist" id="ppList">${all.map((x) => `<label class="item"><input type="checkbox" data-pp="${esc(x.id)}" ${sel.has(x.id) ? 'checked' : ''}>${avatar(x)}<div class="t"><b>${esc(pname(x))}</b><span>${esc([S.A.label(x.id), lifeText(x)].filter(Boolean).join(' · '))}</span></div></label>`).join('')}</div>
       <div class="fbar"><button type="button" class="abtn" id="ppCancel">Hủy</button><button class="abtn blue" id="ppOk"><i class="fa-solid fa-check"></i><span id="ppN"></span></button></div>`,
       { fixed: true, beforeClose: () => { if (!done) { done = true; resolve(null); } return true; } });
     const sh = $('sheet'), boxes = [...sh.querySelectorAll('[data-pp]')];
-    const upd = () => { $('ppN').textContent = `Tạo link (${sel.size} người)`; $('ppOk').disabled = !sel.size; };
+    const upd = () => { $('ppN').textContent = `${o.ok || 'Tạo link'} (${sel.size} người)`; $('ppOk').disabled = !sel.size; };
     boxes.forEach((bx) => (bx.onchange = () => { bx.checked ? sel.add(bx.dataset.pp) : sel.delete(bx.dataset.pp); upd(); }));
     $('ppQ').oninput = () => { const t = fold($('ppQ').value.trim()); boxes.forEach((bx) => (bx.closest('.item').hidden = !!t && !fold(bx.closest('.item').innerText).includes(t))); };
     $('ppAll').onclick = () => { boxes.forEach((bx) => { if (!bx.closest('.item').hidden) { bx.checked = true; sel.add(bx.dataset.pp); } }); upd(); };
@@ -1221,6 +1270,49 @@ function pickPeople(preset = new Set()) {
     upd();
   });
 }
+/** Sửa nhiều người một lần: chọn người → tick trường cần đổi (cha, mẹ, nơi ở…) → áp cùng giá trị cho tất cả */
+const BULK_TEXT = [['branch', 'Chi / phái'], ['address', 'Nơi ở'], ['birthPlace', 'Nơi sinh / quê'], ['burial', 'Nơi an táng'], ['job', 'Nghề nghiệp, học vị, chức vụ'], ['note', 'Ghi chú']];
+async function bulkEdit(preset = new Set()) {
+  if (!S.A || !S.persons.length) return toast('Gia phả chưa có ai – hãy thêm người trước', 4000);
+  const list = await pickPeople(preset, { title: 'Sửa nhiều người', sub: 'Tick những người cần sửa chung (ví dụ các con cùng cha mẹ, cùng nơi ở).', ok: 'Tiếp' });
+  if (!list || !list.length) return;
+  const ppl = list.map((x) => x.p), ids = new Set(ppl.map((x) => x.id));
+  const same = (k) => { const v = ppl[0][k] || ''; return ppl.every((x) => (x[k] || '') === v) ? v : null; };
+  const opt = (g) => [...S.persons].filter((x) => (g === 'f' ? x.gender === 'f' : x.gender !== 'f') && !ids.has(x.id)).sort(byGen)
+    .map((x) => `<option value="${esc(x.id)}">${esc(pname(x))}${S.A.label(x.id) ? ' · ' + esc(S.A.label(x.id)) : ''}</option>`).join('');
+  const chk = (k) => `<input type="checkbox" class="bk" data-k="${k}" aria-label="Áp dụng">`;
+  const row = (k, lab, inp) => `<div class="fld full bkrow"><label>${chk(k)}${esc(lab)}</label>${inp}</div>`;
+  const parentSel = (k, g) => row(k, g === 'f' ? 'Mẹ' : 'Cha', `<select id="bk_${k}" data-k="${k}"><option value="">— Không có / chưa rõ —</option>${opt(g)}</select>`);
+  openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Sửa chung cho ${ppl.length} người</h2>
+    <p style="margin:0 0 8px;color:var(--muted)">Tick ô bên cạnh trường muốn đổi – chỉ trường được tick mới ghi đè cho <b>tất cả</b> người đã chọn. Để trống + tick = xóa trường đó.</p>
+    <div class="rvnames" style="margin-bottom:8px;color:var(--muted);font-size:var(--fs-sm)">${ppl.slice(0, 12).map((x) => esc(pname(x))).join(', ')}${ppl.length > 12 ? ` … +${ppl.length - 12}` : ''}</div>
+    <div class="fgrid">
+      ${parentSel('fatherId', 'm')}${parentSel('motherId', 'f')}
+      ${BULK_TEXT.map(([k, lab]) => { const v = same(k); return row(k, lab, `<input id="bk_${k}" data-k="${k}" value="${esc(v || '')}" placeholder="${v === null ? 'Đang khác nhau giữa các người' : ''}" ${k === 'branch' ? 'list="branches"' : ''}>`); }).join('')}
+    </div>
+    <div class="fbar"><button type="button" class="abtn" id="bkCancel">Hủy</button><button class="abtn blue" id="bkOk"><i class="fa-solid fa-check"></i>Lưu cho ${ppl.length} người</button></div>`, { fixed: true });
+  const sh = $('sheet');
+  for (const k of ['fatherId', 'motherId']) { const v = same(k); if (v && byId(v) && !ids.has(v)) $('bk_' + k).value = v; }
+  const box = (k) => sh.querySelector(`.bk[data-k="${k}"]`);
+  sh.querySelectorAll('#bk_fatherId,#bk_motherId,.fgrid input:not(.bk)').forEach((el) => { el.addEventListener('input', () => (box(el.dataset.k).checked = true)); el.addEventListener('change', () => (box(el.dataset.k).checked = true)); });
+  $('bkCancel').onclick = () => closeSheet(true);
+  $('bkOk').onclick = async () => {
+    const ch = {};
+    sh.querySelectorAll('.bk:checked').forEach((b) => (ch[b.dataset.k] = $('bk_' + b.dataset.k).value.trim()));
+    if (!Object.keys(ch).length) return toast('Hãy tick ít nhất 1 trường cần đổi');
+    for (const k of ['fatherId', 'motherId']) {
+      if (!ch[k]) continue;
+      const bad = ppl.find((x) => wouldCycle(S.A, x.id, ch[k]));
+      if (bad) return toast(`Không được: ${pname(byId(ch[k]))} là con cháu của ${pname(bad)}`, 4000);
+    }
+    const updates = ppl.map((x) => { const u = { id: x.id }; for (const [k, v] of Object.entries(ch)) if ((x[k] || '') !== v) u[k] = v; return u; }).filter((u) => Object.keys(u).length > 1);
+    if (!updates.length) { closeSheet(true); return toast('Không có thay đổi'); }
+    busy('Đang lưu…');
+    try { await D.saveChanges(S.tree.id, { updates }, S.A.byId); busy(); closeSheet(true); toast(`Đã cập nhật ${updates.length} người`); }
+    catch (e) { busy(); toast(D.errMsg(e), 4000); }
+  };
+}
+
 /** Trang Gia phả: tạo link nhờ điền bằng cách chọn nhiều người */
 async function collectPickPeople() {
   if (!S.A || !S.persons.length) return toast('Gia phả chưa có ai – hãy thêm người trước', 4000);

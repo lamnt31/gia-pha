@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792125542704';
+import { esc } from './ui.js?v=1792126479596';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -109,22 +109,38 @@ export function layout(A, collapsed) {
   const place = (p, x0) => {
     const w = widthOf.get(p.id), uw = unitW(p), ux = x0 + (w - uw) / 2;
     const y = ((A.gen.get(p.id) || 1) - minGen) * VGAP + 20;
+    const sps = sp(p);
     nodes.push({ p, x: ux, y, kind: 'blood', kids: A.kids(p.id).length, collapsed: collapsed.has(p.id) });
-    sp(p).forEach((s, i) => nodes.push({ p: s, x: ux + (i + 1) * (NW + GAP_SP), y, kind: 'spouse' }));
+    sps.forEach((s, i) => nodes.push({ p: s, x: ux + (i + 1) * (NW + GAP_SP), y, kind: 'spouse', idx: i, count: sps.length }));
     units.set(p.id, { x: ux, w: uw, y });
-    const ks = visKids(p);
+    // con xếp theo nhóm mẹ (với nam) / cha (với nữ): nhóm chưa rõ trước, rồi vợ cả, vợ hai…
+    const otherKey = p.gender === 'f' ? 'fatherId' : 'motherId';
+    const gi = (k) => sps.findIndex((s) => s.id === k[otherKey]);
+    const ks = visKids(p).map((k, i) => [k, gi(k), i]).sort((m, n) => m[1] - n[1] || m[2] - n[2]).map((x) => x[0]);
     if (!ks.length) return;
     const kw = ks.reduce((s, k) => s + widthOf.get(k.id), 0) + (ks.length - 1) * GAP_SIB;
     let cx = x0 + (w - kw) / 2;
-    const tops = [];
-    for (const k of ks) { place(k, cx); const u = units.get(k.id); tops.push([u.x + NW / 2, u.y]); cx += widthOf.get(k.id) + GAP_SIB; }
-    // đường nối: từ giữa đôi vợ chồng (hoặc giữa người) xuống, ngang qua các con, xuống từng con
-    const fromX = sp(p).length ? ux + NW + GAP_SP / 2 : ux + NW / 2, fromY = y + NH, midY = y + NH + (VGAP - NH) / 2;
-    links.push(`M${fromX} ${fromY}V${midY}`);
-    if (tops.length > 1) links.push(`M${tops[0][0]} ${midY}H${tops.at(-1)[0]}`);
-    if (tops.length === 1 && Math.abs(tops[0][0] - fromX) > 1) links.push(`M${fromX} ${midY}H${tops[0][0]}`);
-    for (const [tx, ty] of tops) links.push(`M${tx} ${midY}V${ty}`);
-    if (tops.length > 1 && (fromX < tops[0][0] || fromX > tops.at(-1)[0])) links.push(`M${fromX} ${midY}H${fromX < tops[0][0] ? tops[0][0] : tops.at(-1)[0]}`);
+    const groups = new Map();   // nhóm → [[x con, y con]]
+    for (const k of ks) {
+      place(k, cx); const u = units.get(k.id), g = gi(k);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push([u.x + NW / 2, u.y]);
+      cx += widthOf.get(k.id) + GAP_SIB;
+    }
+    // đường nối từng nhóm: chưa rõ mẹ → từ người này; vợ cả (1 vợ) → giữa đôi vợ chồng; nhiều vợ → từ chính bà mẹ
+    const multi = sps.length > 1, fromY = y + NH;
+    let gn = 0;
+    for (const [g, tops] of groups) {
+      const fromX = g < 0 ? ux + NW / 2 : !multi ? ux + NW + GAP_SP / 2 : ux + (g + 1) * (NW + GAP_SP) + NW / 2;
+      const midY = y + NH + (VGAP - NH) / 2 + (groups.size > 1 ? (gn - (groups.size - 1) / 2) * 7 : 0);
+      const c = multi && g >= 0 ? `lw${g % 4}` : '';
+      const add = (d) => links.push(c ? { d, c } : d);
+      add(`M${fromX} ${fromY}V${midY}`);
+      const lo = Math.min(fromX, tops[0][0]), hi = Math.max(fromX, tops.at(-1)[0]);
+      if (hi - lo > 1) add(`M${lo} ${midY}H${hi}`);
+      for (const [tx, ty] of tops) add(`M${tx} ${midY}V${ty}`);
+      gn++;
+    }
   };
   let x = 20;
   for (const r of A.roots) { measure(r); place(r, x); x += widthOf.get(r.id) + GAP_SIB * 2; }
@@ -176,7 +192,8 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
     const name = p.name || 'Chưa rõ tên';
     const x = p.photo ? 48 : 12, room = NW - x - 8;
     const [nm, nf] = fit(name, room - icons * 14, 13.5, 11.5);
-    const [gen] = fit(A.label(p.id) + (n.kind === 'spouse' ? (p.gender === 'f' ? ' · vợ' : ' · chồng') : ''), room, 10.5, 10.5, 600);
+    const spLabel = n.kind !== 'spouse' ? '' : p.gender === 'f' ? (n.count > 1 ? ' · vợ ' + (['cả', 'hai', 'ba', 'tư', 'năm', 'sáu'][n.idx] || n.idx + 1) : ' · vợ') : (n.count > 1 ? ' · chồng ' + (n.idx + 1) : ' · chồng');
+    const [gen] = fit(A.label(p.id) + spLabel, room, 10.5, 10.5, 600);
     return `<g class="${cls}" data-id="${esc(p.id)}" transform="translate(${n.x},${n.y})"${bi !== undefined ? ` style="--bc:${branchColor(bi)}"` : ''}>
       <title>${esc(name)}</title>
       <rect width="${NW}" height="${NH}" rx="10"/>${dead ? '<g class="lotus"><title>Đã mất</title><circle cx="3" cy="3" r="10"/><text x="3" y="7" text-anchor="middle">&#xf5bb;</text></g>' : ''}
@@ -191,7 +208,7 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
   };
   svg.setAttribute('viewBox', `0 0 ${L.w} ${L.h}`);
   svg.setAttribute('width', L.w); svg.setAttribute('height', L.h);
-  svg.innerHTML = `<g class="links">${L.links.map((d) => `<path d="${d}"/>`).join('')}</g><g>${L.nodes.map(node).join('')}</g>`;
+  svg.innerHTML = `<g class="links">${L.links.map((l) => (typeof l === 'string' ? `<path d="${l}"/>` : `<path d="${l.d}" class="${l.c}"/>`)).join('')}</g><g>${L.nodes.map(node).join('')}</g>`;
 }
 
 /** Kéo / phóng to / 2 ngón tay cho khung chứa cây. onTap(id) khi chạm 1 người, onToggle(id) khi chạm +/− */
