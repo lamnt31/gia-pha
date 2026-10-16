@@ -244,6 +244,8 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .tcard .tn1 { font-size: var(--fs-2xl); font-weight: 800; }
   .tcard .tn2 { font-size: var(--fs-base); opacity: .85; }
   .tcard .tic { position: absolute; right: 16px; bottom: 12px; font-size: 40px; opacity: .25; }
+  .tcard .tleave { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255,255,255,.22); color: #fff; cursor: pointer; font-size: 14px; }
+  .tcard .tleave:hover { background: rgba(255,255,255,.38); }
   .addtile { min-height: 120px; border-radius: 18px; border: 2px dashed var(--ring); display: grid; place-items: center; color: var(--accent); padding: 12px;
              cursor: pointer; background: var(--card); text-align: center; font: inherit; font-weight: 700; }
   .addtile i { font-size: 24px; display: block; margin-bottom: 6px; }
@@ -457,6 +459,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792143838301"></script>
+<script type="module" src="js/app.js?v=1792144369849"></script>
 </body>
 </html>

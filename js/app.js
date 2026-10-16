@@ -1,13 +1,13 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792143838301';
-import * as D from './data.js?v=1792143838301';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792143838301';
-import { makeKin, DIALECTS } from './kin.js?v=1792143838301';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792143838301';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792144369849';
+import * as D from './data.js?v=1792144369849';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792144369849';
+import { makeKin, DIALECTS } from './kin.js?v=1792144369849';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792144369849';
 
-const APP_VER = '16/10 16:43';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 16:52';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
-const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
+const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
 const canEdit = () => S.role === 'owner' || S.role === 'editor';
 const isOwner = () => S.role === 'owner';
@@ -1598,7 +1598,7 @@ function collectForm(L, mine, { key, person, rel, toFam }, single) {
   $('cf').addEventListener('input', () => (dirty = true)); $('cf').addEventListener('change', () => (dirty = true));
   const leave = async (go) => { if (!dirty || await ask({ title: 'Chưa gửi', msg: 'Thông tin bạn vừa sửa ở trang này <b>chưa được gửi</b>. Vẫn chuyển trang?', ok: 'Chuyển, bỏ phần sửa' })) go(); };
   const goBack = () => (backTo ? renderCollect(L.code, { key: backTo, person: backTo, toFam: true }) : renderCollect(L.code));
-  if (toFam && $('cAddSp')) requestAnimationFrame(() => ($('cFam') || $('cAddSp')).scrollIntoView({ block: 'center' }));
+  if (toFam && $('cAddSp')) requestAnimationFrame(() => { const el = $('cFam') || $('cAddSp'); if (el) el.scrollIntoView({ block: 'center' }); });
   if ($('cBack')) $('cBack').onclick = () => leave(goBack);
   if (canAdd) {
     $('cAddSp').onclick = () => leave(() => collectForm(L, mine, { key: D.newKey(), person: '', rel: { kind: 'spouse', of: person } }));
@@ -1796,8 +1796,23 @@ function renderTrees(m) {
       <div class="sec"><i class="fa-solid fa-share-nodes"></i> Chia sẻ cho dòng họ khác <span class="n"><button class="abtn sm blue" id="shAdd"><i class="fa-solid fa-qrcode"></i>Tạo link / QR</button></span></div>
       <div id="shList"><div class="empty" style="padding:16px"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
       <p class="note">Cho người ở dòng họ khác (vd con rể, con dâu) <b>xem gia phả bằng chính tài khoản của họ</b>: tạo link / mã QR → gửi Zalo hoặc cho quét → người đó đăng nhập và bấm <b>Nhận</b>. Bấm <b>Rút</b> là mất quyền ngay.</p>` : ''}
-    <p class="note">Mỗi dòng họ có <b>1 gia phả</b>. Họ ngoại, họ vợ… tự đăng ký dòng họ của họ rồi nối hồ sơ trùng người bằng <b>Gửi link liên kết</b> trong hồ sơ.</p></div>`;
-  m.querySelectorAll('[data-t]').forEach((el) => (el.onclick = () => { openTree(el.dataset.t).then(() => go('tree')); }));
+    <p class="note">Mỗi dòng họ có <b>1 gia phả</b>. Họ ngoại, họ vợ… tự đăng ký dòng họ của họ rồi nối hồ sơ trùng người bằng <b>Gửi link liên kết</b> trong hồ sơ.</p>
+    ${(() => { const sh = D.myTrees().filter((t) => t.shared); return `<div class="sec"><i class="fa-solid fa-share-from-square"></i> Được chia sẻ cho bạn <span class="n">${sh.length}</span></div>
+      ${sh.length ? `<div class="tgrid">${sh.map((t, i) => { const c = COLORS[(i + 2) % COLORS.length]; return `<div class="tcard" data-t="${esc(t.id)}" style="--c1:${c[0]};--c2:${c[1]}">
+        <div class="tn1">${esc(t.name)}</div><div class="tn2">${esc(t.clanName || '')} · ${esc(D.shareRoleName(t.role))}${S.tree && S.tree.id === t.id ? ' · đang mở' : ''}</div><i class="fa-solid fa-share-nodes tic"></i>
+        <button class="tleave" data-leave="${esc(t.id)}" title="Bỏ theo dõi"><i class="fa-solid fa-xmark"></i></button></div>`; }).join('')}</div>`
+        : '<div class="panel"><div class="empty" style="padding:14px">Chưa có gia phả họ khác chia sẻ cho bạn. Khi được gửi link / mã QR chia sẻ, bấm <b>Quét mã</b> hoặc mở link rồi bấm <b>Nhận</b>.</div></div>'}`; })()}
+    </div>`;
+  m.querySelectorAll('[data-t]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-leave]')) return; openTree(el.dataset.t).then(() => go('tree')); }));
+  m.querySelectorAll('[data-leave]').forEach((b) => (b.onclick = async () => {
+    const t = D.myTrees().find((x) => x.id === b.dataset.leave);
+    if (!(await ask({ title: 'Bỏ theo dõi gia phả này?', msg: `Bạn sẽ không xem được gia phả <b>${esc(t.name)}</b> (${esc(t.clanName || '')}) nữa, trừ khi được chia sẻ lại.`, ok: 'Bỏ theo dõi', danger: true }))) return;
+    try {
+      await D.leaveShare(t.id); toast('Đã bỏ theo dõi');
+      if (S.tree && S.tree.id === t.id) { store('lastTree', null); const n = D.myTrees()[0]; if (n) await openTree(n.id); else { S.tree = null; shell(); } }
+      renderTrees(m);
+    } catch (e) { toast(D.errMsg(e), 4000); }
+  }));
   if ($('tNew')) $('tNew').onclick = newTree;
   if ($('tSet')) $('tSet').onclick = async () => { if (!S.tree || S.tree.id !== tree.id) await openTree(tree.id); treeSettings(); };
   if ($('tCollect')) $('tCollect').onclick = async () => { if (!S.tree || S.tree.id !== tree.id) await openTree(tree.id); collectPickPeople(); };
