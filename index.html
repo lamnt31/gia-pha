@@ -154,6 +154,8 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   /* danh sách dài (có ô tìm): popup cố định chiều cao, chỉ phần danh sách cuộn → lọc không làm popup co lại */
   .mbox.tallbox { height: 82vh; height: 82dvh; display: flex; flex-direction: column; overflow: hidden; }
   .mbox.tallbox .pklist { flex: 1; min-height: 0; overflow-y: auto; justify-content: flex-start; }
+  .mbox.tallbox > :not(.pklist) { flex: 0 0 auto; }   /* ô tìm (.search có flex:1 cho hàng ngang) không được giãn dọc */
+  .sheet.fixh .search { flex: 0 0 auto; }
   @media (min-width: 900px) { .mbox.tallbox { height: 100vh; height: 100dvh; } }
   .pplist .item { cursor: pointer; }
   .pplist input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: 0 0 auto; }
@@ -402,6 +404,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792121481492"></script>
+<script type="module" src="js/app.js?v=1792121894916"></script>
 </body>
 </html>
