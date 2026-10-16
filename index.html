@@ -343,7 +343,9 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
   .blegend button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 99px; border: 1px solid var(--line);
                     background: var(--card-solid); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; box-shadow: var(--shadow); }
   .blegend i { width: 10px; height: 10px; border-radius: 50%; }
-  .blegend .bgen { background: #0070f4; color: #fff; border-color: #0070f4; position: sticky; left: 0; z-index: 1; }
+  .bdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .item .t .rel { color: var(--muted); font-size: var(--fs-sm); }
+  .blegend .bgen {background: #0070f4; color: #fff; border-color: #0070f4; position: sticky; left: 0; z-index: 1; }
   .blegend .bgen i { width: auto; height: auto; border-radius: 0; font-size: .85em; }
   /* vô hậu (đứt mạch): viền xám đỏ + biểu tượng */
   .tn.noheir rect { stroke: #c2410c; stroke-opacity: .55; }
@@ -436,6 +438,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792132018824"></script>
+<script type="module" src="js/app.js?v=1792133033454"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792132018824';
+import { esc } from './ui.js?v=1792133033454';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -219,7 +219,7 @@ export function panZoom(box, svg, { onTap, onToggle }) {
   let start = null, moved = false;
   const clampK = (k) => Math.min(2.5, Math.max(0.15, k));
   const zoomAt = (k, cx, cy) => { const nk = clampK(k); S.x = cx - ((cx - S.x) * nk) / S.k; S.y = cy - ((cy - S.y) * nk) / S.k; S.k = nk; apply(); };
-  const ui = (e) => e.target.closest && e.target.closest('.tsearch, .tools');   // ô tìm kiếm, nút: không kéo cây
+  const ui = (e) => e.target.closest && e.target.closest('.tsearch, .tools, .blegend');   // ô tìm kiếm, nút, thanh nhánh: không kéo cây (để click chuột được)
   box.addEventListener('pointerdown', (e) => {
     if (ui(e)) return;
     try { box.setPointerCapture(e.pointerId); } catch (x) { /* không sao */ } pts.set(e.pointerId, [e.clientX, e.clientY]);

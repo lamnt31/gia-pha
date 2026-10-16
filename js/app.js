@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792132018824';
-import * as D from './data.js?v=1792132018824';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792132018824';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792132018824';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792133033454';
+import * as D from './data.js?v=1792133033454';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792133033454';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792133033454';
 
-const APP_VER = '16/10 13:26';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 13:43';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -460,13 +460,26 @@ function renderTreeTab(fromData) {
       if (!t) { res.hidden = true; return; }
       const hit = S.persons.filter((p) => fold(pname(p) + ' ' + (p.nick || '')).includes(t)).sort(byGen).slice(0, 30);
       res.hidden = false;
-      res.innerHTML = hit.length ? hit.map((p) => `<div class="item" data-go="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · '))}</span></div></div>`).join('') : '<div class="empty" style="padding:16px">Không tìm thấy</div>';
+      res.innerHTML = hit.length ? hit.map((p) => { const bc = branchOf(p), rel = relText(p); return `<div class="item" data-go="${esc(p.id)}">${avatar(p)}<div class="t"><b>${bc ? `<i class="bdot" style="background:${bc}"></i>` : ''}${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · '))}</span>${rel ? `<span class="rel">${esc(rel)}</span>` : ''}</div></div>`; }).join('') : '<div class="empty" style="padding:16px">Không tìm thấy</div>';
       res.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => { res.hidden = true; q.value = ''; $('tqx').hidden = true; jumpTo(el.dataset.go); }));
     };
     $('tqx').onclick = () => { q.value = ''; q.oninput(); q.focus(); };
   }
   drawTree();
   if (S.firstFit) { S.firstFit = false; requestAnimationFrame(() => S.pz.fit()); }
+}
+/** Màu nhánh của 1 người (người trong họ theo nhánh; vợ/chồng theo nhánh người phối ngẫu). Chưa tới đời chia nhánh → '' */
+function branchOf(p) {
+  if (store('branchColor') === false || !S.A) return '';
+  const b = S.A.branch.get(p.id) ?? (p.spouseIds || []).map((s) => S.A.branch.get(s)).find((x) => x !== undefined);
+  return b === undefined ? '' : branchColor(b);
+}
+/** "Con ông A & bà B" hoặc "Vợ của C" – để phân biệt người trùng tên */
+function relText(p) {
+  const f = byId(p.fatherId), m = byId(p.motherId);
+  if (f || m) return 'Con ' + [f && pname(f), m && pname(m)].filter(Boolean).join(' & ');
+  const sp = (p.spouseIds || []).map(byId).filter(Boolean);
+  return sp.length ? (p.gender === 'f' ? 'Vợ ' : 'Chồng ') + sp.map(pname).join(', ') : '';
 }
 /** Hiển thị đến đời N: thu gọn mọi người ở đời N (ẩn đời N+1 trở đi), mở các đời trên. Vẫn bấm "+" để mở riêng từng nhánh */
 async function showToGen() {
@@ -503,7 +516,7 @@ function drawTree() {
       : S.persons.filter((p) => isRoot(p) && S.A.shown(p.id) === S.bgen).sort(byGen).map((p) => ({ id: p.id, c: S.A.branch.has(p.id) ? branchColor(S.A.branch.get(p.id)) : '#94a3b8' }));
     lg.hidden = heads.length < 2;
     lg.innerHTML = (gens.length ? `<button class="bgen" id="bgen"><i class="fa-solid fa-layer-group"></i>${esc(glab(S.bgen === null ? g0 : S.bgen))}<i class="fa-solid fa-chevron-down"></i></button>` : '')
-      + list.map((h) => `<button data-bh="${esc(h.id)}"><i style="background:${h.c}"></i>${esc(pname(byId(h.id)))}</button>`).join('');
+      + list.map((h) => `<button data-bh="${esc(h.id)}" title="${esc(relText(byId(h.id)))}"><i style="background:${h.c}"></i>${esc(pname(byId(h.id)))}</button>`).join('');
     lg.querySelectorAll('[data-bh]').forEach((b) => (b.onclick = () => jumpTo(b.dataset.bh, false)));
     if ($('bgen')) $('bgen').onclick = async () => {
       const v = await pick({ title: 'Xem gốc nhánh ở đời', value: S.bgen === null ? '' : String(S.bgen),
