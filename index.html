@@ -4,6 +4,8 @@
 <script>/* áp giao diện đã chọn ngay khi tải để không nháy màu; mặc định: sáng */
 try { document.documentElement.dataset.theme = JSON.parse(localStorage.getItem('theme')) === 'dark' ? 'dark' : 'light'; } catch (e) { document.documentElement.dataset.theme = 'light'; }
 try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz <= 16) document.documentElement.style.setProperty('--font-size', fz + 'px'); } catch (e) {}
+/* bắt sự kiện "sẵn sàng cài" thật sớm – trình duyệt có thể bắn trước khi app.js (tải sau Firebase) chạy */
+addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__bip = e; });
 </script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -438,6 +440,6 @@ try { var fz = +JSON.parse(localStorage.getItem('fontSize')); if (fz >= 11 && fz
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792133033454"></script>
+<script type="module" src="js/app.js?v=1792133503956"></script>
 </body>
 </html>

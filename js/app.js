@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792133033454';
-import * as D from './data.js?v=1792133033454';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792133033454';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792133033454';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792133503956';
+import * as D from './data.js?v=1792133503956';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792133503956';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792133503956';
 
-const APP_VER = '16/10 13:43';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 13:51';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -137,7 +137,7 @@ else D.onUser(async (u, err) => {
 });
 
 // ======================= Cài ứng dụng (PWA) – giống app Thẻ =======================
-const INST = { deferred: null };
+const INST = { deferred: window.__bip || null };   // có thể đã bắt được trong index.html trước khi app.js chạy
 const standalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isAndroid = /Android/i.test(navigator.userAgent);
@@ -147,7 +147,19 @@ addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); INST.deferr
 addEventListener('appinstalled', () => { INST.deferred = null; document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true)); toast('Đã cài ứng dụng'); });
 function bindInstall(root) { root.querySelectorAll('[data-install]').forEach((b) => (b.onclick = doInstall)); }
 async function doInstall() {
-  if (INST.deferred) {   // Android / Chrome / Edge: hiện hộp cài đặt của trình duyệt
+  INST.deferred = INST.deferred || window.__bip || null;
+  // máy tính / Android: trình duyệt có thể chưa kịp báo "sẵn sàng cài" → chờ thêm tối đa 2 giây
+  if (!INST.deferred && !isIOS) {
+    busy('Đang mở hộp cài đặt…');
+    for (let i = 0; i < 20 && !INST.deferred; i++) { await new Promise((r) => setTimeout(r, 100)); INST.deferred = window.__bip || INST.deferred; }
+    busy();
+  }
+  // đã cài rồi (đang mở bằng trình duyệt) → chỉ cần mở ứng dụng
+  if (!INST.deferred && !isIOS && navigator.getInstalledRelatedApps) {
+    try { if ((await navigator.getInstalledRelatedApps()).length) return ask({ title: 'Đã cài "Gia phả"', msg: 'Ứng dụng đã có trên máy. Mở từ <b>menu Start</b> / màn hình chính, hoặc bấm biểu tượng <b>Mở trong ứng dụng</b> ở cuối thanh địa chỉ.', ok: 'Đã hiểu' }); } catch (e) { /* bỏ qua */ }
+  }
+  if (INST.deferred) {
+    window.__bip = null;   // Android / Chrome / Edge: hiện hộp cài đặt của trình duyệt
     INST.deferred.prompt();
     const c = await INST.deferred.userChoice; INST.deferred = null;
     if (c.outcome === 'accepted') document.querySelectorAll('[data-install]').forEach((b) => (b.hidden = true));

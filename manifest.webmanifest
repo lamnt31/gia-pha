@@ -32,5 +32,6 @@
       "type": "image/svg+xml"
     }
   ],
+  "related_applications": [{ "platform": "webapp", "url": "https://lamnt31.github.io/gia-pha/manifest.webmanifest" }],
   "orientation": "portrait"
 }
