@@ -5,14 +5,14 @@ import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/13.
 import {
   getAuth, initializeAuth, inMemoryPersistence, onAuthStateChanged, signOut, connectAuthEmulator,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword,
-  reauthenticateWithCredential, EmailAuthProvider, signInAnonymously,
+  reauthenticateWithCredential, EmailAuthProvider, signInAnonymously, verifyPasswordResetCode, confirmPasswordReset,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, CACHE_SIZE_UNLIMITED, connectFirestoreEmulator,
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792138126241';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792138894932';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -99,6 +99,27 @@ export async function forgotPassword(code, username) {
   if (!l.data().hasEmail) throw new Error('Tài khoản này không có email. Hãy nhờ quản trị dòng họ cấp tài khoản mới.');
   await sendPasswordResetEmail(auth, l.data().authEmail);
   return l.data().authEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2');
+}
+/** Email mời đặt mật khẩu (Firebase gửi, miễn phí): người nhận tự đặt mật khẩu, xong bấm "Tiếp tục" → về link đăng nhập điền sẵn (url).
+ *  Không bao giờ gửi mật khẩu qua email / link. Domain của url chưa được cho phép → vẫn gửi, chỉ thiếu nút Tiếp tục */
+export async function sendSetPasswordEmail(email, url) {
+  auth.languageCode = 'vi';
+  try { await sendPasswordResetEmail(auth, email, { url }); return true; }
+  catch (e) {
+    if (/continue-uri|unauthorized|invalid-continue/i.test(e.code || '')) { await sendPasswordResetEmail(auth, email); return false; }
+    throw e;
+  }
+}
+/** Trang đặt mật khẩu riêng của app (thay trang mặc định của Firebase): kiểm tra mã trong email → email; đặt mật khẩu mới */
+export const verifyResetCode = (code) => verifyPasswordResetCode(auth, code);
+export const confirmReset = (code, pw) => confirmPasswordReset(auth, code, pw);
+/** Đặt mật khẩu qua link email = đã chứng minh email đúng → ghi nhận để quản trị thấy "email đã xác nhận" */
+export async function markEmailOk() {
+  if (!me || !clan || !account || account.emailOk || !account.email) return;
+  await me.getIdToken(true);
+  if (!me.emailVerified) await me.reload();
+  if (!me.emailVerified) return;
+  await updateDoc(doc(db, 'clans', clan.code, 'users', me.uid), { emailOk: true }); account.emailOk = true;
 }
 export async function changePassword(oldPw, newPw) {
   await reauthenticateWithCredential(me, EmailAuthProvider.credential(me.email, oldPw));
