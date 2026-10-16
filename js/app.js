@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792122146528';
-import * as D from './data.js?v=1792122146528';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792122146528';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792122146528';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792122470283';
+import * as D from './data.js?v=1792122470283';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792122470283';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792122470283';
 
-const APP_VER = '16/10 10:42';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 10:47';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -96,9 +96,16 @@ const ago = (ts) => {
 };
 const initials = (n) => { const w = String(n || '?').trim().split(/\s+/); return (w.at(-1) || '?')[0].toUpperCase(); };
 const avatar = (p, cls = 'ic') => `<div class="${cls} ${p.gender === 'f' ? 'f' : 'm'}">${p.photo ? `<img src="${esc(p.photo)}" alt="">` : esc(initials(p.name))}</div>`;
-/** Sắp xếp người theo đời (như trên cây): đời → thứ tự con → năm sinh → tên. Người chưa nối vào cây xếp cuối */
-const byGen = (a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99) || (a.order || 99) - (b.order || 99)
-  || (yearOf(a.birthSolar) || yearOf(a.birthLunar) || 9999) - (yearOf(b.birthSolar) || yearOf(b.birthLunar) || 9999) || pname(a).localeCompare(pname(b), 'vi');
+/** Thứ tự như trên cây: đời (hàng) → vị trí trái sang phải (anh chị em theo thứ tự con, vợ/chồng ngay cạnh, con cháu theo nhánh).
+ *  Tính 1 lần cho mỗi lần dữ liệu đổi (S.A). Người chưa nối vào cây xếp cuối, theo tên. */
+function treePos() {
+  if (S.A._pos) return S.A._pos;
+  const pos = new Map();
+  try { layout(S.A, new Set()).nodes.forEach((n) => pos.set(n.p.id, n.y * 1e6 + n.x)); } catch (e) { /* bỏ qua */ }
+  return (S.A._pos = pos);
+}
+const byGen = (a, b) => { const P = treePos(), pa = P.get(a.id), pb = P.get(b.id);
+  return (pa === undefined) - (pb === undefined) || (pa ?? 0) - (pb ?? 0) || pname(a).localeCompare(pname(b), 'vi'); };
 const pname = (p) => (p && p.name) || 'Chưa rõ tên';
 
 // ======================= Khởi động =======================
@@ -832,7 +839,7 @@ function renderList(m) {
 function exportCsv() {
   const head = ['Mã', 'Đời', 'Họ tên', 'Tên thường gọi', 'Tên húy', 'Giới tính', 'Chi/phái', 'Con thứ', 'Con nuôi', 'Cha', 'Mẹ', 'Vợ/chồng',
     'Sinh (dương)', 'Sinh (âm)', 'Còn sống', 'Mất (dương)', 'Mất (âm)', 'Giỗ (âm)', 'Nơi sinh', 'Nơi ở', 'Điện thoại', 'Email', 'An táng', 'Nghề nghiệp', 'Ghi chú'];
-  const rows = [...S.persons].sort((a, b) => (S.A.gen.get(a.id) || 99) - (S.A.gen.get(b.id) || 99)).map((p) => {
+  const rows = [...S.persons].sort(byGen).map((p) => {
     const g = isDead(p) && gioOf(p);
     return [p.id, S.A.label(p.id), pname(p), p.nick, p.alias, p.gender === 'f' ? 'Nữ' : 'Nam', p.branch, p.order, p.adopted ? 'x' : '',
       byId(p.fatherId) ? pname(byId(p.fatherId)) : '', byId(p.motherId) ? pname(byId(p.motherId)) : '',
