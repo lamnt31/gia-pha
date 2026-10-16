@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792134876578';
-import * as D from './data.js?v=1792134876578';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792134876578';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792134876578';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792137090446';
+import * as D from './data.js?v=1792137090446';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792137090446';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792137090446';
 
-const APP_VER = '16/10 14:14';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 14:51';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -170,7 +170,8 @@ async function doInstall() {
     ? '1. Mở trang này bằng <b>Safari</b><br>2. Bấm nút <b>Chia sẻ</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> ở thanh dưới<br>3. Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>'
     : isAndroid
       ? '1. Bấm nút menu <b>⋮</b> góc trên bên phải của Chrome<br>2. Chọn <b>Cài đặt ứng dụng</b> (hoặc <b>Thêm vào màn hình chính</b>)<br>3. Bấm <b>Cài đặt</b>'
-      : '<b>Cách 1:</b> bấm biểu tượng <b>Cài đặt ứng dụng</b> <i class="fa-solid fa-display"></i> ở cuối thanh địa chỉ (bên phải ô nhập link).<br><br>'
+      : '<span style="color:var(--muted)">Trình duyệt đang tạm không cho trang tự mở hộp cài (thường do trước đó hộp cài đã bị đóng / bấm Hủy). Bạn cài trực tiếp như sau:</span><br><br>'
+        + '<b>Cách 1 (nhanh nhất):</b> bấm biểu tượng <b>Cài đặt</b> <i class="fa-solid fa-display"></i><i class="fa-solid fa-arrow-down" style="font-size:.7em"></i> ở <b>cuối thanh địa chỉ</b>, ngay cạnh ngôi sao ☆ → <b>Cài đặt</b>.<br><br>'
         + '<b>Cách 2:</b><br>• <b>Edge:</b> menu <b>⋯</b> → <b>Ứng dụng</b> → <b>Cài đặt trang web này dưới dạng ứng dụng</b><br>'
         + '• <b>Chrome:</b> menu <b>⋮</b> → <b>Truyền, lưu và chia sẻ</b> → <b>Cài đặt trang dưới dạng ứng dụng</b>';
   await ask({ title: 'Cài "Gia phả" lên máy', msg, ok: 'Đã hiểu' });
@@ -1212,7 +1213,11 @@ function scheduleEventsSync() {
   clearTimeout(EV_T);
   const t = S.tree.id;
   EV_T = setTimeout(() => { if (S.tree && S.tree.id === t) D.syncEvents(t, eventItems()).catch(() => {}); }, 4000);
+  // link nhờ điền đang mở: cập nhật vợ/chồng, con đã có (kể cả link cũ, người vừa duyệt thêm) – gom lại 15 giây/lần
+  clearTimeout(FAM_T);
+  FAM_T = setTimeout(() => { if (S.tree && S.tree.id === t && S.A) D.refreshCollectFam(t, (id) => (byId(id) ? famOf(byId(id)) : null)).catch((e) => console.warn('fam', e)); }, D.isEmu ? 1500 : 15000);
 }
+let FAM_T = 0;
 
 const PUSH_DAYS = [[0, 'Đúng ngày'], [1, 'Trước 1 ngày'], [3, 'Trước 3 ngày'], [7, 'Trước 7 ngày']];
 async function pushSettings() {
@@ -1255,11 +1260,12 @@ async function pushSettings() {
 
 // ======================= Link nhờ điền thông tin (không cần tài khoản) – 1 người, cả gia đình, cả nhánh =======================
 /** Kèm vợ/chồng, con đã có trong gia phả của từng người (gọn: tên, quan hệ, giới, năm sinh) → trang nhờ điền hiện ra để khỏi thêm trùng */
-function withFam(list) {
-  const yr = (p) => yearOf(p.birthSolar) || yearOf(p.birthLunar) || 0;
+function famOf(p) {
+  const yr = (x) => yearOf(x.birthSolar) || yearOf(x.birthLunar) || 0;
   const one = (x, k) => { const o = { n: pname(x), k, g: x.gender === 'f' ? 'f' : 'm' }; if (yr(x)) o.y = yr(x); if (isDead(x)) o.d = 1; return o; };
-  return list.map((it) => ({ ...it, fam: [...(it.p.spouseIds || []).map(byId).filter(Boolean).map((x) => one(x, 's')), ...[...S.A.allKids(it.p.id)].sort(byGen).map((x) => one(x, 'c'))] }));
+  return [...(p.spouseIds || []).map(byId).filter(Boolean).map((x) => one(x, 's')), ...[...S.A.allKids(p.id)].sort(byGen).map((x) => one(x, 'c'))].slice(0, 40);
 }
+const withFam = (list) => list.map((it) => ({ ...it, fam: famOf(it.p) }));
 /** Thành viên trong phạm vi: one = 1 người; family = + vợ/chồng + các con; branch = + vợ/chồng + con cháu mọi đời (kèm vợ/chồng) */
 function collectScope(p, scope) {
   const out = [], seen = new Set();

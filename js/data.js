@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792134876578';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792137090446';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -563,6 +563,25 @@ export async function submitCollect(link, { key, person, personName, all, from, 
   else await setDoc(ref, { code: link.code, uid: auth.currentUser.uid, tree: link.tree, person, key, personName, ...(rel ? { rel } : {}), data, from, phone, status: 'open', at: serverTimestamp() });
 }
 export const newKey = () => 'new' + Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, '').padEnd(8, '0');
+/** Làm mới danh sách vợ/chồng, con đã có (snaps.*.fam) trên các link nhờ điền còn hạn, được thêm người mới.
+ *  famOf(id) → mảng fam hiện tại. Chỉ ghi khi có thay đổi. Trả về số link đã cập nhật */
+export async function refreshCollectFam(treeId, famOf) {
+  const s = await getDocs(query(collection(db, 'collectLinks'), where('tree', '==', treeId)));
+  let n = 0;
+  for (const d of s.docs) {
+    const L = d.data();
+    if (!L.allowAdd || !L.snaps || (L.expiresAt && L.expiresAt.toMillis() < Date.now())) continue;
+    const upd = {};
+    for (const id of Object.keys(L.snaps)) {
+      const f = famOf(id);
+      if (!f) continue;
+      const sig = (a) => a.map((x) => [x.n, x.k, x.g, x.y || '', x.d || ''].join('|')).join('\n');   // so sánh không phụ thuộc thứ tự khóa
+      if (sig(f) !== sig(L.snaps[id].fam || [])) upd[`snaps.${id}.fam`] = f.length ? f : deleteField();
+    }
+    if (Object.keys(upd).length) { await updateDoc(d.ref, { ...upd, famAt: serverTimestamp() }); n++; }
+  }
+  return n;
+}
 export async function listCollectSubs(treeId) {
   const s = await getDocs(query(collection(db, 'collectSubs'), where('tree', '==', treeId), where('status', '==', 'open')));
   return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
