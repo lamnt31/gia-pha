@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792122470283';
+import { esc } from './ui.js?v=1792124409204';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -209,7 +209,12 @@ export function panZoom(box, svg, { onTap, onToggle }) {
       S.k = clampK(Math.min(r.width / w, r.height / h, 1)); S.x = (r.width - w * S.k) / 2; S.y = 10; apply();
     },
     zoom(f) { const r = box.getBoundingClientRect(); zoomAt(S.k * f, r.width / 2, r.height / 2); },
-    center(x, y) { const r = box.getBoundingClientRect(); S.k = Math.max(S.k, 0.8); S.x = r.width / 2 - (x + NW / 2) * S.k; S.y = r.height / 3 - (y + NH / 2) * S.k; apply(); },
+    center(x, y, k, ty = 1 / 3) {
+      const r = box.getBoundingClientRect();
+      S.k = clampK(k || Math.max(S.k, 0.8)); S.x = r.width / 2 - (x + NW / 2) * S.k; S.y = r.height * ty - (y + NH / 2) * S.k;
+      svg.style.transition = 'transform .45s cubic-bezier(.2,.8,.2,1)'; apply();
+      clearTimeout(svg._tt); svg._tt = setTimeout(() => (svg.style.transition = ''), 480);
+    },
     state: S,
   };
 }

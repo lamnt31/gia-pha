@@ -1,10 +1,10 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792122470283';
-import * as D from './data.js?v=1792122470283';
-import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792122470283';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792122470283';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792124409204';
+import * as D from './data.js?v=1792124409204';
+import { analyze, layout, renderTree, panZoom, wouldCycle } from './tree.js?v=1792124409204';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792124409204';
 
-const APP_VER = '16/10 10:47';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '16/10 11:20';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#4f46e5', '#7c3aed'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', filter: 'all', gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -482,8 +482,27 @@ function jumpTo(id, open = true) {
   if (changed) store('col_' + S.tree.id, [...S.collapsed]);
   S.sel = id; drawTree();
   const n = LAYOUT.nodes.find((x) => x.p.id === id);
-  if (n) S.pz.center(n.x, n.y);
+  // có popup thông tin (nửa dưới màn hình điện thoại) → đưa người đó lên phần trên; không có → giữa màn hình
+  const mobileSheet = open && !matchMedia('(min-width: 900px)').matches;
+  if (n) S.pz.center(n.x, n.y, Math.max(S.pz.state.k, 1.1), mobileSheet ? 0.24 : 0.45);
+  flashNode(id);
   if (open) showPerson(id);
+}
+/** Làm nổi bật 1 ô trên cây: viền dày + phát sáng + nhấp nháy vài lần */
+function flashNode(id) {
+  setTimeout(() => {
+    const g = $('tsvg') && $('tsvg').querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (!g) return;
+    g.parentNode.appendChild(g);   // đưa lên trên cùng để không bị che
+    g.classList.remove('flash'); void g.getBBox(); g.classList.add('flash');
+    clearTimeout(g._ft); g._ft = setTimeout(() => g.classList.remove('flash'), 3200);
+  }, 120);
+}
+/** Nút "Xem trên cây": đóng hồ sơ, sang tab Cây, phóng tới đúng người và làm nổi bật */
+function showOnTree(id) {
+  closeSheet(true);
+  if (S.tab !== 'tree') go('tree');
+  setTimeout(() => { if (S.pz) jumpTo(id, false); }, S.pz ? 50 : 350);
 }
 
 // ======================= Hồ sơ một người =======================
@@ -521,6 +540,7 @@ function showPerson(id, refresh) {
       <div class="r"><span>${p.gender === 'f' ? 'Chồng' : 'Vợ'}</span><b class="rel">${spouses.length ? relBtns(spouses) : '—'}</b></div>
       <div class="r"><span>Con (${kids.length})</span><b class="rel">${kids.length ? relBtns(kids) : '—'}</b></div>
     </div>
+    <div class="sacts"><button class="abtn full" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button></div>
     ${canEdit() ? `<div class="sacts">
       <button class="abtn blue full" data-a="edit"><i class="fa-solid fa-pen"></i>Sửa thông tin</button>
       <button class="abtn" data-a="child"><i class="fa-solid fa-child"></i>Thêm con</button>
@@ -550,6 +570,7 @@ async function personAction(p, a) {
   if (a === 'insert') return personForm(null, { mode: 'insert', of: p });
   if (a === 'link') return linkForm(p);
   if (a === 'propose') return propose(p);
+  if (a === 'locate') return showOnTree(p.id);
   if (a === 'share') return shareForLink(p);
   if (a === 'collect') return collectLinkFor(p);
   if (a === 'linkcode') return linkWithCode(p);
