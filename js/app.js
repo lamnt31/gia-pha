@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792396233408';
-import * as D from './data.js?v=1792396233408';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792396233408';
-import { makeKin, DIALECTS } from './kin.js?v=1792396233408';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792396233408';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792396517721';
+import * as D from './data.js?v=1792396517721';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792396517721';
+import { makeKin, DIALECTS } from './kin.js?v=1792396517721';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792396517721';
 
-const APP_VER = '19/10 14:50';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 14:55';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -523,12 +523,13 @@ function renderTreeTab(fromData) {
       <div class="tsearch"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="tq" placeholder="Tìm người trên cây…" autocomplete="off"><button class="clr" id="tqx" hidden><i class="fa-solid fa-xmark"></i></button></div><div class="panel sres" id="tres" hidden></div></div>
       <div class="blegend" id="blegend"></div>
       <div class="tools"><button class="ibtn" id="zin" title="Phóng to"><i class="fa-solid fa-plus"></i></button><button class="ibtn" id="zout" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
-      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zme" title="Về tôi" hidden><i class="fa-solid fa-location-crosshairs"></i></button><button class="ibtn" id="zkin" title="Cách gọi với tôi (bật / tắt)" hidden><i class="fa-solid fa-people-arrows"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEditAll() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
+      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zme" title="Về tôi" hidden><i class="fa-solid fa-location-crosshairs"></i></button><button class="ibtn" id="zkin" title="Cách gọi với tôi (bật / tắt)" hidden><i class="fa-solid fa-people-arrows"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zchief" title="Dòng trưởng họ (bật / tắt)"><i class="fa-solid fa-crown"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEditAll() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
     S.pz = panZoom($('tbox'), $('tsvg'), {
       onTap: (id) => { S.sel = id; drawTree(); showPerson(id); },
       onEdit: (id) => { const p = byId(id); if (canEditP(p)) { S.sel = id; personForm(p, { mode: 'edit' }); } },
       onToggle: (id) => { S.collapsed.has(id) ? S.collapsed.delete(id) : S.collapsed.add(id); store('col_' + S.tree.id, [...S.collapsed]); drawTree(); },
     });
+    $('zchief').onclick = () => { store('chiefOn', store('chiefOn') === false ? null : false); drawTree(); toast(store('chiefOn') === false ? 'Đã ẩn dòng trưởng họ' : 'Hiện dòng trưởng họ (đường vàng đậm)'); };
     $('zcol').onclick = () => { store('branchColor', store('branchColor') === false); drawTree(); toast(store('branchColor') === false ? 'Đã tắt màu theo nhánh' : 'Đã bật màu theo nhánh'); };
     $('zgen').onclick = () => showToGen();
     $('zme').onclick = () => { const me = myMe(); if (me) jumpTo(me, false); };
@@ -610,10 +611,11 @@ const canEditP = (p) => !!p && (canEditAll() || (isLiner() && lineSet().has(p.id
 let LAYOUT = null;
 function drawTree() {
   if (!S.A || !$('tsvg')) return;
-  LAYOUT = layout(S.A, S.collapsed);
+  LAYOUT = layout(S.A, S.collapsed, store('chiefOn') !== false);
   const colorOn = store('branchColor') !== false;
   const me = myMe();
   renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []), colorOn, me && kinOn() ? kinOf : null, me, canEditP);
+  if ($('zchief')) { $('zchief').classList.toggle('on', store('chiefOn') !== false); $('zchief').hidden = !(S.A.chief && S.A.chief.size); }
   if ($('zme')) { $('zme').hidden = !me; $('zkin').hidden = !me; $('zkin').classList.toggle('on', kinOn()); }
   // chú thích màu nhánh: bấm để tới gốc nhánh
   const lg = $('blegend');
@@ -686,7 +688,7 @@ function showPerson(id, refresh) {
   const html = `
     <div class="phead">${avatar(p, 'ph').replace(/<\/div>$/, isDead(p) ? '<span class="lotusb" title="Đã mất"><i class="fa-solid fa-spa"></i></span></div>' : '</div>')}<div style="min-width:0"><h2>${esc(pname(p))}</h2>
       <div class="pg">${esc(A.label(id))}${A.spouseIn.has(id) ? (p.gender === 'f' ? ' · con dâu' : ' · con rể') : ''}${S.tree.anchorId === id ? ' · <i class="fa-solid fa-flag"></i> mốc đời 1' : ''}</div>
-      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
+      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.chief && A.chief.has(id) ? '<span class="tag chieftag"><i class="fa-solid fa-crown"></i> Dòng trưởng họ</span>' : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
     <div class="rows">
       ${(() => { const k = kinOf(id); return k && k.t !== 'Tôi' ? row('fa-people-arrows', 'Quan hệ với bạn', `${esc(k.t)}${k.hint ? `<small>${esc(k.hint)}</small>` : ''}`) : k ? row('fa-user-check', 'Tài khoản', 'Đây là bạn') : ''; })()}
       ${(() => { const u = linkedUser(id); return u && u.uid !== D.account.uid ? row('fa-user-check', 'Tài khoản', `${esc(u.name || u.username)} <small>@${esc(u.username)}</small>`) : ''; })()}

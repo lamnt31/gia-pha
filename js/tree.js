@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792396233408';
+import { esc } from './ui.js?v=1792396517721';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -73,7 +73,18 @@ export function analyze(persons, anchorId) {
       walk(h);
     }
   }
-  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads };
+  // dòng trưởng họ: từ ông tổ, mỗi đời theo con trai ruột lớn nhất (con thứ, rồi năm sinh) – con nuôi, con gái không tính
+  const chief = new Set(), chiefNext = new Map();
+  for (const r of roots) {
+    if (r.gender === 'f') continue;
+    let cur = r;
+    for (;;) {
+      const nx = (kidsOf.get(cur.id) || []).find((k) => k.gender !== 'f' && !k.adopted && k.fatherId === cur.id);
+      if (!nx || chief.has(nx.id)) break;
+      chiefNext.set(cur.id, nx.id); chief.add(cur.id); chief.add(nx.id); cur = nx;
+    }   // ông tổ chưa có con trai ruột → chưa có dòng trưởng
+  }
+  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads, chief, chiefNext };
 }
 
 /** Kiểm tra gán cha/mẹ có tạo vòng lặp không: newParent không được là con cháu của personId */
@@ -91,7 +102,7 @@ export function wouldCycle(A, personId, newParentId) {
 }
 
 /** Xếp vị trí: trả về {nodes:[{p, x, y, kind}], links:[path], w, h} */
-export function layout(A, collapsed) {
+export function layout(A, collapsed, showChief = true) {
   const units = new Map();   // id người máu mủ -> {spouses, w}
   const sp = (p) => (p.spouseIds || []).filter((s) => A.spouseIn.has(s) && A.has(s)).map((s) => A.byId.get(s));
   const unitW = (p) => { const n = 1 + sp(p).length; return n * NW + (n - 1) * GAP_SP; };
@@ -105,7 +116,7 @@ export function layout(A, collapsed) {
     return w;
   };
   const minGen = Math.min(...A.roots.map((r) => A.gen.get(r.id) || 1));
-  const nodes = [], links = [];
+  const nodes = [], links = [], chiefLinks = [];
   const place = (p, x0) => {
     const w = widthOf.get(p.id), uw = unitW(p), ux = x0 + (w - uw) / 2;
     const y = ((A.gen.get(p.id) || 1) - minGen) * VGAP + 20;
@@ -124,7 +135,7 @@ export function layout(A, collapsed) {
     for (const k of ks) {
       place(k, cx); const u = units.get(k.id), g = gi(k);
       if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push([u.x + NW / 2, u.y]);
+      groups.get(g).push([u.x + NW / 2, u.y, k.id]);
       cx += widthOf.get(k.id) + GAP_SIB;
     }
     // đường nối từng nhóm: chưa rõ mẹ → từ người này; vợ cả (1 vợ) → giữa đôi vợ chồng; nhiều vợ → từ chính bà mẹ
@@ -139,13 +150,16 @@ export function layout(A, collapsed) {
       const lo = Math.min(fromX, tops[0][0]), hi = Math.max(fromX, tops.at(-1)[0]);
       if (hi - lo > 1) add(`M${lo} ${midY}H${hi}`);
       for (const [tx, ty] of tops) add(`M${tx} ${midY}V${ty}`);
+      // dòng trưởng họ: vẽ đậm đường từ cha xuống con trai trưởng (vẽ sau cùng, đè lên đường thường)
+      const ch = A.chiefNext && tops.find((x) => x[2] === A.chiefNext.get(p.id));
+      if (ch) chiefLinks.push({ d: `M${fromX} ${fromY}V${midY}H${ch[0]}V${ch[1]}`, c: 'chief' });
       gn++;
     }
   };
   let x = 20;
   for (const r of A.roots) { measure(r); place(r, x); x += widthOf.get(r.id) + GAP_SIB * 2; }
   const w = Math.max(x, 200), h = Math.max(...nodes.map((n) => n.y), 0) + NH + 60;
-  return { nodes, links, w, h };
+  return { nodes, links: showChief ? links.concat(chiefLinks) : links, w, h };
 }
 
 const isDeadP = (p) => p.alive === false || !!(p.deathSolar || p.deathLunar);
