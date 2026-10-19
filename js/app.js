@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792396517721';
-import * as D from './data.js?v=1792396517721';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792396517721';
-import { makeKin, DIALECTS } from './kin.js?v=1792396517721';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792396517721';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792398316411';
+import * as D from './data.js?v=1792398316411';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792398316411';
+import { makeKin, DIALECTS } from './kin.js?v=1792398316411';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792398316411';
 
-const APP_VER = '19/10 14:55';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 15:25';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -688,10 +688,11 @@ function showPerson(id, refresh) {
   const html = `
     <div class="phead">${avatar(p, 'ph').replace(/<\/div>$/, isDead(p) ? '<span class="lotusb" title="Đã mất"><i class="fa-solid fa-spa"></i></span></div>' : '</div>')}<div style="min-width:0"><h2>${esc(pname(p))}</h2>
       <div class="pg">${esc(A.label(id))}${A.spouseIn.has(id) ? (p.gender === 'f' ? ' · con dâu' : ' · con rể') : ''}${S.tree.anchorId === id ? ' · <i class="fa-solid fa-flag"></i> mốc đời 1' : ''}</div>
-      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.chief && A.chief.has(id) ? '<span class="tag chieftag"><i class="fa-solid fa-crown"></i> Dòng trưởng họ</span>' : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
+      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.chief && A.chief.has(id) ? `<span class="tag chieftag ${A.chiefPick.has(id) ? 'pk' : ''}"><i class="fa-solid fa-crown"></i> ${A.chiefHead.has(id) ? 'Trưởng họ hiện tại' + (A.chiefPick.has(id) ? ' (gia đình chọn)' : '') : A.chiefPassed.has(id) ? 'Đã làm trưởng họ · đã chuyển' : A.chiefPick.has(id) ? 'Nối trưởng họ (gia đình chọn)' : 'Dòng trưởng họ'}</span>` : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
     <div class="rows">
       ${(() => { const k = kinOf(id); return k && k.t !== 'Tôi' ? row('fa-people-arrows', 'Quan hệ với bạn', `${esc(k.t)}${k.hint ? `<small>${esc(k.hint)}</small>` : ''}`) : k ? row('fa-user-check', 'Tài khoản', 'Đây là bạn') : ''; })()}
       ${(() => { const u = linkedUser(id); return u && u.uid !== D.account.uid ? row('fa-user-check', 'Tài khoản', `${esc(u.name || u.username)} <small>@${esc(u.username)}</small>`) : ''; })()}
+      ${p.chiefNext && byId(p.chiefNext) ? row('fa-crown', 'Đã chuyển trưởng họ cho', `${esc(pname(byId(p.chiefNext)))}<small>Gia đình chọn${relText(byId(p.chiefNext)) ? ' · ' + esc(relText(byId(p.chiefNext))) : ''}</small>`) : ''}
       ${row('fa-venus-mars', 'Giới tính', p.gender === 'f' ? 'Nữ' : 'Nam')}
       ${row('fa-cake-candles', 'Sinh', p.birthSolar || p.birthLunar ? `${esc(p.birthSolar || '')}${!isDead(p) && ageOf(p) !== null ? ` · ${ageOf(p)} tuổi` : ''}${bl ? `<small>Âm lịch: ${formatLunar(bl)}</small>` : p.birthLunar ? `<small>Âm lịch: ${esc(p.birthLunar)}</small>` : ''}` : '')}
       ${isDead(p) ? row('fa-dove', 'Mất', `${esc(p.deathSolar || '') || (p.deathLunar ? '' : 'Đã mất')}${ageOf(p) !== null ? ` · hưởng thọ ${ageOf(p)} tuổi` : ''}${dl ? `<small>Âm lịch: ${formatLunar(dl)}</small>` : p.deathLunar ? `<small>Âm lịch: ${esc(p.deathLunar)}</small>` : ''}`) : ''}
@@ -726,6 +727,8 @@ function showPerson(id, refresh) {
       <button class="abtn" data-a="link"><i class="fa-solid fa-link"></i>Nối quan hệ</button>
       ${S.A.allKids(id).length && (p.spouseIds || []).some(byId) ? `<button class="abtn full" data-a="assign"><i class="fa-solid fa-people-arrows"></i>Gán ${p.gender === 'f' ? 'cha' : 'mẹ'} cho các con (${S.A.allKids(id).length})</button>` : ''}
       ${S.A.allKids(id).length > 1 ? `<button class="abtn full" data-a="bulk"><i class="fa-solid fa-users-gear"></i>Sửa chung cho các con (${S.A.allKids(id).length})</button>` : ''}
+      ${A.chiefHead && A.chiefHead.has(id) ? '<button class="abtn full" data-a="chiefnext"><i class="fa-solid fa-crown"></i>Chuyển trưởng họ sang người khác</button>' : ''}
+      ${A.chiefPick && A.chiefPick.has(id) ? '<button class="abtn full" data-a="chiefundo"><i class="fa-solid fa-rotate-left"></i>Bỏ chọn nối trưởng họ (chọn nhầm)</button>' : ''}
       <button class="abtn" data-a="collect"><i class="fa-solid fa-file-pen"></i>Nhờ người khác điền</button>
       ${isOwner() && S.tree.anchorId !== id ? '<button class="abtn" data-a="anchor"><i class="fa-solid fa-flag"></i>Đặt làm đời 1</button>' : ''}
       <button class="abtn red ${isOwner() && S.tree.anchorId !== id ? '' : 'full'}" data-a="del"><i class="fa-solid fa-trash"></i>Xóa</button>
@@ -747,6 +750,33 @@ function showPerson(id, refresh) {
   bindLinks(p);
 }
 
+/** Chọn tay người nối trưởng họ sau người p (khi không có con trai ruột, hoặc gia đình quyết định khác) */
+async function pickChiefNext(p) {
+  const anc = new Set(); for (let x = p; x; x = byId(x.fatherId) || byId(x.motherId)) anc.add(x.id);   // không chọn chính mình / tổ tiên
+  const cand = S.persons.filter((x) => x.gender !== 'f' && !anc.has(x.id) && !S.A.spouseIn.has(x.id));
+  // gợi ý trước: con nuôi / con trai của p, anh em trai, cháu trai (con của anh em) – rồi đến người khác theo đời
+  const sibs = new Set(S.persons.filter((x) => x.id !== p.id && ((p.fatherId && x.fatherId === p.fatherId))).map((x) => x.id));
+  const score = (x) => (x.fatherId === p.id || x.motherId === p.id ? 0 : sibs.has(x.id) ? 1 : sibs.has(x.fatherId) ? 2 : 3);
+  cand.sort((a, b) => score(a) - score(b) || byGen(a, b));
+  const tagOf = (x) => ['con' + (x.adopted ? ' nuôi' : ''), 'anh/em trai', 'cháu (con anh em)', ''][score(x)];
+  const opts = [...cand.filter((x) => !S.A.chief.has(x.id)).map((x) => [x.id, `${pname(x)} · ${S.A.label(x.id)}${tagOf(x) ? ' · ' + tagOf(x) : ''}${relText(x) ? ' · ' + relText(x) : ''}`])];
+  if (!opts.length) return toast('Không còn nam giới nào ngoài dòng trưởng để chọn', 4000);
+  const v = await pick({ title: `Chuyển trưởng họ: sau ${pname(p)} là ai?`, options: opts, value: '' });
+  if (!v) return;
+  if (!await ask({ title: 'Chuyển trưởng họ', msg: `<b>${esc(pname(p))}</b> vẫn được ghi là đã làm trưởng họ. Trưởng họ chuyển sang <b>${esc(pname(byId(v)))}</b> (${esc(S.A.label(v))}), rồi tiếp tục theo con trai trưởng của người này.`, ok: 'Chuyển' })) return;
+  busy('Đang lưu…');
+  try { await D.saveChanges(S.tree.id, { updates: [{ id: p.id, chiefNext: v }] }, S.A.byId); busy(); closeSheet(true); toast(`Trưởng họ chuyển sang ${pname(byId(v))}`); }
+  catch (e) { busy(); toast(D.errMsg(e), 4000); }
+}
+/** Bỏ chọn người nối trưởng họ (chọn nhầm) → xóa lựa chọn ở người đã chuyển, dòng trưởng về như trước */
+async function undoChiefPick(p) {
+  const from = S.persons.find((x) => x.chiefNext === p.id && S.A.chiefPassed.has(x.id));
+  if (!from) return;
+  if (!await ask({ title: 'Bỏ chọn nối trưởng họ', msg: `Bỏ việc chọn <b>${esc(pname(p))}</b> nối trưởng họ sau <b>${esc(pname(from))}</b> (chọn nhầm)? Dòng trưởng họ trở về như trước khi chọn.`, ok: 'Bỏ chọn', danger: true })) return;
+  busy('Đang lưu…');
+  try { await D.saveChanges(S.tree.id, { updates: [{ id: from.id, chiefNext: '' }] }, S.A.byId); busy(); closeSheet(true); toast('Đã bỏ chọn'); }
+  catch (e) { busy(); toast(D.errMsg(e), 4000); }
+}
 /** Tài khoản đã gắn với người này (chỉ quản trị biết – có danh sách người dùng) */
 function linkedUser(pid) { return S.tree && (S.users || []).find((u) => (u.me || {})[S.tree.id] === pid) || null; }
 /** Chưa gắn với ai trong gia phả này, gia phả của dòng họ mình, không phải chỉ xem */
@@ -772,6 +802,8 @@ function refreshUsers() { if (D.isRoot()) D.listUsers().then((l) => { S.users = 
 async function personAction(p, a) {
   if (a === 'claim') return claimMe(p);
   if (a === 'unclaim') return claimMe(p, true);
+  if (a === 'chiefnext') return pickChiefNext(p);
+  if (a === 'chiefundo') return undoChiefPick(p);
   if (a === 'edit') return personForm(p, { mode: 'edit' });
   if (a === 'child') return personForm(null, { mode: 'child', of: p });
   if (a === 'spouse') return personForm(null, { mode: 'spouse', of: p });
@@ -2092,7 +2124,7 @@ async function renderProps(m) {
 // ======================= Tab Nhật ký =======================
 const LABEL = { name: 'Họ tên', nick: 'Tên thường gọi', alias: 'Tên húy', gender: 'Giới tính', branch: 'Chi', order: 'Con thứ', adopted: 'Con nuôi', birthSolar: 'Sinh',
   birthLunar: 'Sinh (âm)', alive: 'Còn sống', deathSolar: 'Mất', deathLunar: 'Mất (âm)', birthPlace: 'Nơi sinh', address: 'Nơi ở', phone: 'Điện thoại', email: 'Email', burial: 'An táng', job: 'Nghề nghiệp', note: 'Ghi chú',
-  fatherId: 'Cha', motherId: 'Mẹ', spouseIds: 'Vợ/chồng', photo: 'Ảnh' };
+  fatherId: 'Cha', motherId: 'Mẹ', spouseIds: 'Vợ/chồng', photo: 'Ảnh', chiefNext: 'Người nối trưởng họ' };
 async function renderLog(m) {
   m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
   let list;

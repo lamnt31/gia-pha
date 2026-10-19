@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792396517721';
+import { esc } from './ui.js?v=1792398316411';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -28,14 +28,14 @@ export function analyze(persons, anchorId) {
   for (const id of [...spouseIn]) if (!(byId.get(id).spouseIds || []).some((s) => has(s) && !spouseIn.has(s))) spouseIn.delete(id);
 
   // con gắn vào người cha/mẹ "máu mủ" (đứng riêng trên cây): ưu tiên cha, nếu cha là con rể thì gắn vào mẹ
-  const kidsOf = new Map(), allKids = new Map();
+  const kidsOf = new Map(), allKids = new Map(), drawParent = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const p of persons) {
     const f = has(p.fatherId) ? p.fatherId : null, mo = has(p.motherId) ? p.motherId : null;
     let parent = f && !spouseIn.has(f) ? f : mo && !spouseIn.has(mo) ? mo : f || mo;
     // con riêng của dâu / rể → vẽ dưới đôi vợ chồng
     if (parent && spouseIn.has(parent)) parent = (byId.get(parent).spouseIds || []).find((s) => has(s) && !spouseIn.has(s)) || parent;
-    if (parent) push(kidsOf, parent, p);
+    if (parent) { push(kidsOf, parent, p); drawParent.set(p.id, parent); }
     if (f) push(allKids, f, p);
     if (mo) push(allKids, mo, p);
   }
@@ -73,18 +73,39 @@ export function analyze(persons, anchorId) {
       walk(h);
     }
   }
-  // dòng trưởng họ: từ ông tổ, mỗi đời theo con trai ruột lớn nhất (con thứ, rồi năm sinh) – con nuôi, con gái không tính
-  const chief = new Set(), chiefNext = new Map();
+  // dòng trưởng họ: từ ông tổ, mỗi đời theo con trai ruột lớn nhất (con thứ, rồi năm sinh) – con nuôi, con gái không tính.
+  // Gia đình chọn tay "người nối trưởng họ" (p.chiefNext) → đi theo người đó (em trai, cháu, con thừa tự…), rồi tiếp tục tự động.
+  // chiefEdge: 'cha>con' → 'chief' (tự động) | 'chief2' (đoạn chuyển sang người được chọn – vẽ nét đứt); chiefPick: người được chọn tay
+  // chiefHead: người cuối dòng = trưởng họ hiện tại; chiefPassed: người đã chuyển trưởng họ cho người khác (chọn tay)
+  const chief = new Set(), chiefEdge = new Map(), chiefPick = new Set(), chiefHead = new Set(), chiefPassed = new Set();
+  // con trai mất trước bố (bố còn sống mà con đã mất, hoặc năm/ngày mất sớm hơn) và không có con trai ruột → như không có con trai
+  const dkey = (p) => { const s = String(p.deathSolar || p.deathLunar || ''), m = s.match(/(?:(\d{1,2})\/)?(?:(\d{1,2})\/)?(\d{3,4})$/); return m ? +m[3] * 10000 + (+m[2] || 0) * 100 + (+m[1] || 0) : 0; };
+  const diedBefore = (k, f) => isDeadP(k) && (!isDeadP(f) || (dkey(k) && dkey(f) && dkey(k) < dkey(f)));
+  const hasBioSon = (k) => (allKids.get(k.id) || []).some((c) => c.gender !== 'f' && !c.adopted && c.fatherId === k.id);
   for (const r of roots) {
     if (r.gender === 'f') continue;
     let cur = r;
     for (;;) {
-      const nx = (kidsOf.get(cur.id) || []).find((k) => k.gender !== 'f' && !k.adopted && k.fatherId === cur.id);
+      const pick = cur.chiefNext && byId.get(cur.chiefNext);
+      const nx = pick && !chief.has(pick.id) && pick.id !== cur.id ? pick
+        : (kidsOf.get(cur.id) || []).find((k) => k.gender !== 'f' && !k.adopted && k.fatherId === cur.id && !(diedBefore(k, cur) && !hasBioSon(k)));
       if (!nx || chief.has(nx.id)) break;
-      chiefNext.set(cur.id, nx.id); chief.add(cur.id); chief.add(nx.id); cur = nx;
-    }   // ông tổ chưa có con trai ruột → chưa có dòng trưởng
+      chief.add(cur.id); chief.add(nx.id);
+      if (nx === pick) {
+        chiefPick.add(nx.id); chiefPassed.add(cur.id);
+        // đường từ người được chọn ngược lên tới người đã thuộc dòng trưởng (tổ tiên chung)
+        for (let y = nx; y;) {
+          const pp = drawParent.get(y.id); if (!pp) break;
+          chiefEdge.set(pp + '>' + y.id, 'chief2');
+          if (chief.has(pp)) break;   // tới dòng trưởng cũ (tổ tiên chung)
+          y = byId.get(pp);
+        }
+      } else chiefEdge.set(cur.id + '>' + nx.id, 'chief');
+      cur = nx;
+    }   // ông tổ chưa có con trai ruột (và chưa chọn ai) → chưa có dòng trưởng
+    if (chief.has(cur.id)) chiefHead.add(cur.id);
   }
-  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads, chief, chiefNext };
+  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads, chief, chiefEdge, chiefPick, chiefHead, chiefPassed };
 }
 
 /** Kiểm tra gán cha/mẹ có tạo vòng lặp không: newParent không được là con cháu của personId */
@@ -151,8 +172,7 @@ export function layout(A, collapsed, showChief = true) {
       if (hi - lo > 1) add(`M${lo} ${midY}H${hi}`);
       for (const [tx, ty] of tops) add(`M${tx} ${midY}V${ty}`);
       // dòng trưởng họ: vẽ đậm đường từ cha xuống con trai trưởng (vẽ sau cùng, đè lên đường thường)
-      const ch = A.chiefNext && tops.find((x) => x[2] === A.chiefNext.get(p.id));
-      if (ch) chiefLinks.push({ d: `M${fromX} ${fromY}V${midY}H${ch[0]}V${ch[1]}`, c: 'chief' });
+      for (const [tx, ty, kid] of tops) { const c = A.chiefEdge && A.chiefEdge.get(p.id + '>' + kid); if (c) chiefLinks.push({ d: `M${fromX} ${fromY}V${midY}H${tx}V${ty}`, c }); }
       gn++;
     }
   };
@@ -202,7 +222,8 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
     const nh = n.kind === 'blood' && A.noHeir(p.id), ad = !!p.adopted, icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0) + (ad ? 1 : 0);
     const bi = colorBranches && p.gender !== 'f' && n.kind === 'blood' ? A.branch.get(p.id) : undefined;
-    const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${bi !== undefined ? 'br' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''} ${p.id === meId ? 'me' : ''}`;
+    const pick = A.chiefPick && A.chiefPick.has(p.id);
+    const cls = `tn ${pick ? 'cpick' : ''} ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${bi !== undefined ? 'br' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''} ${p.id === meId ? 'me' : ''}`;
     const name = p.name || 'Chưa rõ tên';
     const x = p.photo ? 48 : 12, room = NW - x - 8;
     const [nm, nf] = fit(name, room - icons * 14, 13.5, 11.5);
@@ -221,6 +242,12 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
       ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
       ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}
       ${ad ? `<g class="ad"><title>Con nuôi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0) - (nh ? 15 : 0)}" y="17" text-anchor="end">&#xf4be;</text></g>` : ""}
+      ${(() => {   // nhãn nổi mép trên: trưởng họ hiện tại (vàng) / người được chọn nối (tím)
+        const head = A.chiefHead && A.chiefHead.has(p.id);
+        if (!head && !pick) return '';
+        const t = head ? (pick ? 'Trưởng họ (nối)' : 'Trưởng họ') : 'Nối trưởng họ', wd = head && !pick ? 66 : 92;
+        return `<g class="cpk ${pick ? 'pk' : ''}"><title>${head ? 'Trưởng họ hiện tại' : 'Được chọn nối trưởng họ'}</title><rect x="${NW - wd - 8}" y="-9" width="${wd}" height="17" rx="8.5"/><text x="${NW - 8 - wd / 2}" y="3.5" text-anchor="middle">${t}</text></g>`;
+      })()}
       ${p.id === meId ? `<g class="mepin"><title>Đây là bạn</title><circle class="pulse" cx="${NW / 2}" cy="-6" r="13"/><circle cx="${NW / 2}" cy="-6" r="12"/><text x="${NW / 2}" y="-1.5" text-anchor="middle">&#xf3c5;</text></g>` : ''}
       ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><rect class="hit" x="${NW - 46}" y="${NH - 30}" width="58" height="44" rx="10"/><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
