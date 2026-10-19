@@ -11,3 +11,5 @@ export const firebaseConfig = {
 export const recaptchaSiteKey = '';
 // Khóa công khai Web Push (VAPID) cho thông báo giỗ / sinh nhật. Khóa bí mật chỉ nằm trong Secrets của repo gia-pha-cron.
 export const vapidPublicKey = 'BJ_1RRY3ga8XhzXxiVmPiFAwehnF5UvSDr-sRcYuOgpDr8CUmekxbTGOmziVfwGDU8ckiAQ5HXhgCtyUQPpzkU0';
+// Trạm gửi thông báo tức thì (Cloudflare Worker – docs/SETUP-worker.md): báo tang, báo hỷ, tin nhắn. Để trống = chưa cài (tin vẫn đăng, chỉ chưa đẩy).
+export const workerUrl = '';

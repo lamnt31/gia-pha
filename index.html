@@ -259,6 +259,21 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .top { position: sticky; top: 0; z-index: 8; display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 16px; height: 52px;
          background: var(--hdr); color: #fff; }
   .top .ibtn { width: 36px; height: 36px; font-size: var(--fs-lg); background: rgba(255,255,255,.14); border: 0; color: #fff; }
+  /* chuông thông báo: số chưa đọc đỏ ở góc */
+  .top .ibtn.bell { position: relative; }
+  .bellN { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #ef4444; color: #fff;
+           font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; border: 2px solid var(--hdr, #0070f4); box-sizing: content-box; }
+  /* tin dòng họ + hộp thông báo */
+  .nic { flex: 0 0 auto; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: #fff; font-size: 16px; background: #64748b; }
+  .tang .nic, .nic.tang { background: #374151; } .hy .nic, .nic.hy { background: #dc2626; } .chung .nic, .nic.chung { background: #0070f4; }
+  .nic.gio { background: #b45309; } .nic.sn { background: #db2777; } .nic.props { background: #f59e0b; }
+  .item.ibit.unread { background: color-mix(in srgb, #0070f4 6%, transparent); } .item.ibit.unread .t b { font-weight: 800; }
+  .item.ibit:not(.unread) .t b { font-weight: 500; color: var(--muted); }
+  .udot { width: 10px; height: 10px; border-radius: 50%; background: #0070f4; flex: 0 0 auto; }
+  .newshead { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 99px; font-weight: 700; font-size: var(--fs-sm); color: #fff; background: #0070f4; }
+  .newshead.tang { background: #374151; } .newshead.hy { background: #dc2626; }
+  .evrow { display: flex; gap: 8px; } .evrow > * { flex: 1; min-width: 0; }
+  @media (max-width: 520px) { .evrow { flex-direction: column; } }
   .tsw { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, auto) auto; justify-content: start; column-gap: 8px; align-items: center;
          border: 0; background: none; color: #fff; text-align: left; cursor: pointer; font: inherit; padding: 0; }
   .tsw b { font-size: var(--fs-lg); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -498,6 +513,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792399284728"></script>
+<script type="module" src="js/app.js?v=1792400633049"></script>
 </body>
 </html>

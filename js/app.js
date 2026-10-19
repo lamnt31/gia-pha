@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792399284728';
-import * as D from './data.js?v=1792399284728';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792399284728';
-import { makeKin, DIALECTS } from './kin.js?v=1792399284728';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792399284728';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792400633049';
+import * as D from './data.js?v=1792400633049';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792400633049';
+import { makeKin, DIALECTS } from './kin.js?v=1792400633049';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792400633049';
 
-const APP_VER = '19/10 15:41';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 16:03';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -354,6 +354,8 @@ const NAV = [
   { k: 'tree', ic: 'fa-sitemap', n: 'Cây', ok: () => !!S.tree },
   { k: 'list', ic: 'fa-list', n: 'Danh sách', ok: () => !!S.tree },
   { k: 'gio', ic: 'fa-calendar-days', n: 'Lịch', ok: () => !!S.tree },
+  { k: 'inbox', ic: 'fa-bell', n: 'Thông báo', ok: () => !!S.tree, g: 'Gia phả' },
+  { k: 'news', ic: 'fa-newspaper', n: 'Tin dòng họ', ok: () => !!S.tree, g: 'Gia phả' },
   { k: 'props', ic: 'fa-clipboard-check', n: 'Duyệt thông tin', ok: () => !!S.tree && (canEdit() || isLiner()), g: 'Gia phả' },
   { k: 'log', ic: 'fa-clock-rotate-left', n: 'Nhật ký', ok: () => !!S.tree && S.role !== 'viewer', g: 'Gia phả' },
   { k: 'users', ic: 'fa-users-gear', n: 'Người dùng', ok: () => D.isRoot(), g: 'Quản trị' },
@@ -368,6 +370,7 @@ function shell() {
     <div class="top">
       <button class="tsw" id="treeSw"><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
         <small id="tsub">${esc(S.tree ? `${ROLE[S.role]} · ${S.persons.length} người` : D.clan.name || '')}</small><i class="fa-solid fa-chevron-down"></i></button>
+      ${S.tree ? '<button class="ibtn bell" id="bellBtn" title="Thông báo"><i class="fa-solid fa-bell"></i><b class="bellN" id="bellN" hidden></b></button>' : ''}
       <button class="ibtn" id="scanBtn" title="Quét mã QR (nhận chia sẻ / liên kết)"><i class="fa-solid fa-qrcode"></i></button>
       <button class="ibtn" id="themeBtn"></button>
     </div>
@@ -378,6 +381,7 @@ function shell() {
   $('themeBtn').onclick = toggleTheme;
   $('treeSw').onclick = switchTree;
   $('scanBtn').onclick = () => scanAndHandle();
+  if ($('bellBtn')) { $('bellBtn').onclick = () => go('inbox'); refreshBell(); }
   document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => go(b.dataset.tab)));
   renderTab();
 }
@@ -390,7 +394,7 @@ function go(k) {
   window.scrollTo(0, 0);
   renderTab();
 }
-function setBadge() { document.querySelectorAll('[data-badge]').forEach((b) => { b.textContent = S.propCount; b.hidden = !S.propCount; }); }
+function setBadge() { document.querySelectorAll('[data-badge]').forEach((b) => { b.textContent = S.propCount; b.hidden = !S.propCount; }); refreshBell(); }
 
 async function switchTree() {
   const tr = D.myTrees();
@@ -423,7 +427,7 @@ async function openTree(id, first) {
   busy();
   store('lastTree', id);
   S.persons = []; S.A = null; S.sel = null; S.q = ''; S.pz = null; S.firstFit = true; S.propCount = 0;
-  S.collapsed = new Set(store('col_' + id) || []); S.links = new Map(); S.users = null; KIN = null;
+  S.collapsed = new Set(store('col_' + id) || []); S.links = new Map(); S.users = null; KIN = null; S.news = null; S.inRead = null;
   refreshUsers();
   if (first) S.tab = store('tab') || 'home';
   document.title = S.tree.name + ' – Gia phả';
@@ -435,6 +439,7 @@ async function openTree(id, first) {
       renderTab(true);
       if (S.propsWait && S.tab === 'props') { S.propsWait = false; renderProps($('main')); }
       scheduleEventsSync();
+      clearTimeout(S.bellT); S.bellT = setTimeout(refreshBell, 800);   // số thông báo chưa đọc trên chuông
       if (S.jumpAfterLoad && S.A.byId.has(S.jumpAfterLoad)) { const j = S.jumpAfterLoad; S.jumpAfterLoad = null; go('tree'); setTimeout(() => jumpTo(j), 150); }
       if (store('pendingLink') && list.length && !S.linkBusy) {
         const c = store('pendingLink'); store('pendingLink', null); S.linkBusy = true;
@@ -452,7 +457,8 @@ function renderTab(fromData) {
   const sub = $('tsub'); if (sub && S.tree) sub.textContent = `${ROLE[S.role]} · ${S.persons.length} người`;
   const m = $('main'); if (!m) return;
   if (S.tab === 'tree') return S.tree ? renderTreeTab(fromData) : renderHome(m);
-  if (fromData && ['props', 'log', 'users', 'trees', 'more'].includes(S.tab)) return;   // không phụ thuộc danh sách người
+  if (fromData && ['props', 'log', 'users', 'trees', 'more', 'news'].includes(S.tab)) return;   // không phụ thuộc danh sách người
+  if (fromData && S.tab === 'inbox') return refreshBell();
   S.pz = null;
   if (S.tab === 'home') return renderHome(m);
   if (S.tab === 'more') return renderMore(m);
@@ -463,6 +469,8 @@ function renderTab(fromData) {
   if (S.tab === 'gio') return renderGio(m);
   if (S.tab === 'props') return renderProps(m);
   if (S.tab === 'log') return renderLog(m);
+  if (S.tab === 'news') return renderNews(m);
+  if (S.tab === 'inbox') return renderInbox(m);
 }
 
 // ======================= Tổng quan =======================
@@ -483,6 +491,7 @@ function renderHome(m) {
   m.innerHTML = `<div class="page">
     ${shareBanners()}
     <div class="hello"><div><small>Hôm nay ${fmtD([today.getDate(), today.getMonth() + 1, today.getFullYear()])}</small><b>Âm lịch ${formatLunar(tl)}</b></div><i class="fa-solid fa-moon"></i></div>
+    <div id="newsBlk"></div>
     <div class="stats">
       <div class="stat"><div class="k"><i class="fa-solid fa-users"></i> Tổng số</div><div class="v">${P.length}</div></div>
       <div class="stat"><div class="k"><i class="fa-solid fa-layer-group"></i> Số đời</div><div class="v">${gens}</div></div>
@@ -505,6 +514,231 @@ function renderHome(m) {
   m.querySelectorAll('[data-go]').forEach((el) => (el.onclick = () => go(el.dataset.go)));
   m.querySelectorAll('[data-act]').forEach((el) => (el.onclick = () => (el.dataset.act === 'add' ? personForm(null, { mode: 'first' }) : exportCsv())));
   bindShareBanners(m);
+  newsBlock();
+}
+
+// ======================= Tin dòng họ: báo tang, báo hỷ, thông báo (BA-tin-hieu-hy.md) =======================
+const NEWS_T = {
+  tang: { n: 'Báo tang', ic: 'fa-spa', cls: 'tang', react: 'Thắp hương', ric: 'fa-fire-flame-simple', keep: 49 },
+  hy: { n: 'Báo hỷ', ic: 'fa-heart', cls: 'hy', react: 'Chúc mừng', ric: 'fa-champagne-glasses', keep: 30 },
+  chung: { n: 'Thông báo', ic: 'fa-bullhorn', cls: 'chung', react: 'Đã biết', ric: 'fa-check', keep: 30 },
+};
+const canPost = () => S.tree && S.role !== 'viewer' && !(D.myTrees().find((t) => t.id === S.tree.id) || {}).shared;
+const evTime = (at) => { const m = String(at || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/); return m ? `${m[4] ? `${m[4]}:${m[5]} ` : ''}${m[3]}/${m[2]}/${m[1]}` : ''; };
+const mapUrl = (place) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
+const newsSummary = (x) => { const e = (x.events || []).find((v) => v.at) || {}; return [e.name && evTime(e.at) ? `${e.name} ${evTime(e.at)}` : '', x.place || e.place || ''].filter(Boolean).join(' · '); };
+function newsItem(x) {
+  const T = NEWS_T[x.type] || NEWS_T.chung, n = Object.keys(x.reactions || {}).length;
+  return `<div class="item newsit ${T.cls}" data-news="${esc(x.id)}"><div class="nic"><i class="fa-solid ${T.ic}"></i></div>
+    <div class="t"><b>${esc(x.title)}</b><span>${esc(newsSummary(x) || T.n)}</span><span>${esc(x.byName || '')} · ${esc(ago(x.at))}${n ? ` · <i class="fa-solid ${T.ric}"></i> ${n}` : ''}</span></div>
+    <i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i></div>`;
+}
+async function loadNews(force) {
+  if (!S.tree) return [];
+  if (!force && S.news && S.news.tree === S.tree.id && Date.now() - S.news.at < 60000) return S.news.list;
+  const list = await D.listNews(S.tree.id);
+  S.news = { tree: S.tree.id, at: Date.now(), list };
+  return list;
+}
+/** Khối "Tin dòng họ" trên Tổng quan: tin còn trong hạn (báo tang 49 ngày, hỷ / thông báo 30 ngày) */
+async function newsBlock() {
+  const el = $('newsBlk'); if (!el) return;
+  let list = [];
+  try { list = await loadNews(); } catch (e) { return; }
+  if (!$('newsBlk')) return;
+  const now = Date.now(), fresh = list.filter((x) => x.at && now - x.at.toMillis() < (NEWS_T[x.type] || NEWS_T.chung).keep * 864e5).slice(0, 3);
+  if (!fresh.length && !canPost()) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="sec"><i class="fa-solid fa-newspaper"></i> Tin dòng họ <span class="n">${canPost() ? '<button class="abtn sm" id="nPost"><i class="fa-solid fa-bullhorn"></i>Đăng thông báo</button>' : ''}</span></div>
+    <div class="panel">${fresh.length ? fresh.map(newsItem).join('') + (list.length > fresh.length ? '<div class="item" id="nAll" style="justify-content:center;color:var(--accent);font-weight:600">Xem tất cả tin</div>' : '')
+      : '<div class="empty" style="padding:14px">Chưa có tin mới. Báo tang / báo hỷ: bấm vào người trong cây → <b>Sự kiện</b>.</div>'}</div>`;
+  el.querySelectorAll('[data-news]').forEach((b) => (b.onclick = () => showNews(list.find((x) => x.id === b.dataset.news))));
+  if ($('nAll')) $('nAll').onclick = () => go('news');
+  if ($('nPost')) $('nPost').onclick = () => newsForm('chung');
+}
+async function renderNews(m) {
+  m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
+  let list;
+  try { list = await loadNews(true); } catch (e) { m.innerHTML = `<div class="page"><div class="empty">${esc(D.errMsg(e))}</div></div>`; return; }
+  if (S.tab !== 'news') return;
+  S.nf = S.nf || '';
+  const draw = () => {
+    const l = list.filter((x) => !S.nf || x.type === S.nf);
+    $('nList').innerHTML = l.length ? l.map(newsItem).join('') : '<div class="empty" style="padding:20px"><i class="fa-regular fa-newspaper"></i>Chưa có tin</div>';
+    $('nList').querySelectorAll('[data-news]').forEach((b) => (b.onclick = () => showNews(list.find((x) => x.id === b.dataset.news))));
+  };
+  m.innerHTML = `<div class="page">
+    <div class="listbar"><div class="filters">${[['', 'Tất cả'], ...Object.entries(NEWS_T).map(([k, v]) => [k, v.n])].map(([k, n]) => `<button class="chip ${S.nf === k ? 'on' : ''}" data-nf="${k}">${n}</button>`).join('')}
+      ${canPost() ? '<button class="abtn sm blue" id="nPost2" style="margin-left:auto"><i class="fa-solid fa-bullhorn"></i>Đăng thông báo</button>' : ''}</div></div>
+    <div class="panel" id="nList"></div>
+    <p class="note">Báo tang, báo hỷ: bấm vào người trên cây hoặc trong danh sách → nút <b>Sự kiện</b>.${D.notifyReady() ? '' : ' <i>Thông báo đẩy tới điện thoại sẽ hoạt động khi cài xong trạm gửi tin.</i>'}</p></div>`;
+  m.querySelectorAll('[data-nf]').forEach((b) => (b.onclick = () => { S.nf = b.dataset.nf; m.querySelectorAll('[data-nf]').forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+  if ($('nPost2')) $('nPost2').onclick = () => newsForm('chung');
+  draw();
+}
+/** Chi tiết 1 tin */
+function showNews(x) {
+  if (!x) return;
+  const T = NEWS_T[x.type] || NEWS_T.chung, ps = (x.personIds || []).map(byId).filter(Boolean);
+  const reacted = !!(x.reactions || {})[D.account.uid], names = Object.values(x.reactions || {}).filter((v) => typeof v === 'string');
+  const tel = x.contact && x.contact.phone ? x.contact.phone.replace(/[^0-9+]/g, '') : '';
+  openSheet(`<div class="newshead ${T.cls}"><i class="fa-solid ${T.ic}"></i><span>${T.n}</span></div>
+    <h2 style="margin:6px 0 2px;font-size:var(--fs-2xl)">${esc(x.title)}</h2>
+    <p style="margin:0;color:var(--muted);font-size:var(--fs-sm)">${esc(x.byName || '')} đăng · ${esc(ago(x.at))}</p>
+    ${ps.length ? `<div class="panel" style="margin-top:10px">${ps.map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p), x.type === 'tang' && ageOf(p) !== null ? 'hưởng thọ ' + ageOf(p) : ''].filter(Boolean).join(' · '))}</span></div><i class="fa-solid fa-chevron-right" style="color:var(--muted)"></i></div>`).join('')}</div>` : ''}
+    ${x.img ? `<img src="${esc(x.img)}" alt="" style="width:100%;border-radius:14px;margin-top:10px">` : ''}
+    <div class="rows" style="margin-top:10px">
+      ${(x.events || []).filter((e) => e.at || e.place).map((e) => `<div class="r"><i class="fa-regular fa-clock"></i><span>${esc(e.name)}</span><b>${esc(evTime(e.at))}${e.place ? `<small>${esc(e.place)}</small>` : ''}</b></div>`).join('')}
+      ${x.place ? `<div class="r"><i class="fa-solid fa-location-dot"></i><span>${x.type === 'tang' ? 'Tang gia' : 'Địa điểm'}</span><b>${esc(x.place)}<small class="ctact"><a href="${esc(mapUrl(x.place))}" target="_blank" rel="noopener"><i class="fa-solid fa-diamond-turn-right"></i> Chỉ đường</a></small></b></div>` : ''}
+      ${x.burial ? `<div class="r"><i class="fa-solid fa-monument"></i><span>An táng</span><b>${esc(x.burial)}</b></div>` : ''}
+      ${x.contact && (x.contact.name || tel) ? `<div class="r"><i class="fa-solid fa-phone"></i><span>${x.type === 'tang' ? 'Tang chủ / liên hệ' : 'Liên hệ'}</span><b>${esc(x.contact.name || '')} ${esc(x.contact.phone || '')}${tel ? `<small class="ctact"><a href="tel:${esc(tel)}"><i class="fa-solid fa-phone"></i> Gọi</a><a href="https://zalo.me/${esc(tel.replace(/\D/g, ''))}" target="_blank" rel="noopener"><i class="fa-solid fa-comment"></i> Zalo</a></small>` : ''}</b></div>` : ''}
+    </div>
+    ${x.body ? `<p style="white-space:pre-wrap;margin:12px 2px">${esc(x.body)}</p>` : ''}
+    <div class="sacts">
+      ${S.role !== 'viewer' ? `<button class="abtn ${reacted ? 'blue' : ''} full" id="nReact"><i class="fa-solid ${T.ric}"></i>${T.react}${names.length ? ` (${names.length})` : ''}</button>` : ''}
+      <button class="abtn" id="nShare"><i class="fa-solid fa-share-nodes"></i>Chia sẻ Zalo…</button>
+      ${ps[0] ? '<button class="abtn" id="nTree"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button>' : ''}
+      ${x.by === D.account.uid || canEditAll() ? '<button class="abtn red full" id="nDel"><i class="fa-solid fa-trash"></i>Gỡ tin</button>' : ''}
+    </div>
+    ${names.length ? `<p class="note">${x.type === 'tang' ? '🕯 Đã thắp hương' : '❤ ' + T.react}: ${esc(names.slice(0, 30).join(', '))}${names.length > 30 ? ` và ${names.length - 30} người khác` : ''}</p>` : ''}`);
+  const sh = $('sheet');
+  sh.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => showPerson(b.dataset.p)));
+  if ($('nTree')) $('nTree').onclick = () => { closeSheet(true); showOnTree(ps[0].id); };
+  if ($('nReact')) $('nReact').onclick = async () => {
+    try { await D.reactNews(S.tree.id, x.id, !reacted); x.reactions = { ...(x.reactions || {}) }; if (reacted) delete x.reactions[D.account.uid]; else x.reactions[D.account.uid] = D.myName(); showNews(x); newsBlock(); }
+    catch (e) { toast(D.errMsg(e), 4000); }
+  };
+  $('nShare').onclick = async () => {
+    const text = `${x.title}\n${(x.events || []).filter((e) => e.at).map((e) => `- ${e.name}: ${evTime(e.at)}${e.place ? ' tại ' + e.place : ''}`).join('\n')}${x.place ? `\n${x.type === 'tang' ? 'Tang gia' : 'Địa điểm'}: ${x.place}` : ''}${x.body ? '\n' + x.body : ''}\n(Gia phả ${S.tree.name})`;
+    if (navigator.share) { try { await navigator.share({ title: x.title, text }); } catch (e) { /* hủy */ } } else { try { await navigator.clipboard.writeText(text); toast('Đã copy – dán gửi Zalo'); } catch (e) { toast('Không copy được', 3000); } }
+  };
+  if ($('nDel')) $('nDel').onclick = async () => {
+    if (!await ask({ title: 'Gỡ tin?', msg: `Gỡ tin <b>${esc(x.title)}</b>? Mọi người sẽ không thấy tin này nữa.${x.type === 'tang' ? '<br><small>Hồ sơ người mất <b>không</b> tự đổi lại – nếu báo nhầm hãy sửa hồ sơ.</small>' : ''}`, ok: 'Gỡ tin', danger: true })) return;
+    try { await D.updateNews(S.tree.id, x.id, { status: 'removed' }); S.news = null; closeSheet(true); toast('Đã gỡ tin'); if (S.tab === 'news') renderNews($('main')); else newsBlock(); }
+    catch (e) { toast(D.errMsg(e), 4000); }
+  };
+}
+/** Form đăng tin. type: tang | hy | chung; p: người trong cây (báo tang / hỷ) */
+async function newsForm(type, p) {
+  const T = NEWS_T[type], nowIso = (() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); })();
+  if (type === 'tang' && isDead(p) && !await ask({ title: 'Người này đã được ghi là đã mất', msg: `<b>${esc(pname(p))}</b> đã được ghi là đã mất trong gia phả. Vẫn đăng tin báo tang?<br><small>Nếu cụ mất đã lâu và chỉ mới nhập vào gia phả thì <b>không cần</b> báo tang.</small>`, ok: 'Vẫn báo tang' })) return;
+  const sp = p ? (p.spouseIds || []).map(byId).filter(Boolean) : [];
+  const kidM = p ? S.A.allKids(p.id).filter((k) => k.gender !== 'f').sort(byGen)[0] : null;
+  const ev = (k, name) => `<div class="fld full"><label>${name}</label><div class="evrow"><input type="datetime-local" id="ev_${k}"><input id="evp_${k}" placeholder="Địa điểm (bỏ trống = tại tang gia / nơi tổ chức)"></div></div>`;
+  const EV = type === 'tang' ? [['nq', 'Lễ nhập quan'], ['vieng', 'Lễ viếng (bắt đầu)'], ['dt', 'Lễ truy điệu – đưa tang']] : type === 'hy' ? [['ah', 'Lễ ăn hỏi'], ['th', 'Lễ thành hôn'], ['tiec', 'Tiệc cưới']] : [['tg', 'Thời gian']];
+  openSheet(`<div class="newshead ${T.cls}"><i class="fa-solid ${T.ic}"></i><span>${T.n}</span></div>
+    <form id="nf">
+    ${p ? `<div class="panel" style="margin:10px 0"><div class="item" style="cursor:default">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p)].filter(Boolean).join(' · '))}</span></div></div></div>` : ''}
+    <div class="fgrid">
+      ${type === 'tang' ? `<div class="fld"><label>Ngày giờ mất *</label><input type="datetime-local" id="n_death" value="${nowIso}" required></div>
+        <div class="fld"><label>Âm lịch · hưởng thọ</label><input id="n_lunar" disabled></div>` : ''}
+      ${type === 'hy' ? `<div class="fld full"><label>${p.gender === 'f' ? 'Chú rể' : 'Cô dâu'} *</label><div class="evrow"><select id="n_sp"><option value="">— Người ngoài gia phả (gõ tên) —</option>${sp.map((s) => `<option value="${esc(s.id)}">${esc(pname(s))}</option>`).join('')}</select><input id="n_spn" placeholder="Họ tên"></div></div>` : ''}
+      ${type === 'chung' ? '<div class="fld full"><label>Tiêu đề *</label><input id="n_title" maxlength="200" placeholder="vd: Họp họ cuối năm, Giỗ tổ…" required></div>' : ''}
+      ${EV.map(([k, n]) => ev(k, n)).join('')}
+      <div class="fld full"><label>${type === 'tang' ? 'Địa chỉ tang gia' : 'Địa điểm'}</label><input id="n_place" maxlength="300" value="${esc(type === 'tang' && p ? p.address || '' : '')}"></div>
+      ${type === 'tang' ? `<div class="fld full"><label>Nơi an táng / hỏa táng</label><input id="n_burial" maxlength="300" value="${esc(p.burial || '')}"></div>` : ''}
+      <div class="fld"><label>${type === 'tang' ? 'Tang chủ / người liên hệ' : 'Người liên hệ'}</label><input id="n_cn" maxlength="120" value="${esc(type === 'tang' && kidM ? pname(kidM) : D.myName())}"></div>
+      <div class="fld"><label>Số điện thoại</label><input id="n_cp" type="tel" maxlength="30" value="${esc(type === 'tang' && kidM ? kidM.phone || '' : (D.account.phone || ''))}"></div>
+      <div class="fld full"><label>${type === 'chung' ? 'Nội dung *' : 'Lời nhắn / ghi chú'}</label><textarea id="n_body" rows="3" maxlength="3000" placeholder="${type === 'tang' ? 'vd: Gia đình xin phép không nhận vòng hoa, phúng viếng' : ''}" ${type === 'chung' ? 'required' : ''}></textarea></div>
+    </div>
+    ${type === 'tang' ? '<p class="note"><i class="fa-solid fa-circle-info"></i> Đăng tin sẽ <b>cập nhật hồ sơ</b>: đã mất, ngày mất (dương + âm), nơi an táng → ngày giỗ tự vào Lịch.</p>' : ''}
+    <p class="note"><i class="fa-solid fa-bell"></i> ${D.notifyReady() ? 'Gửi thông báo tới điện thoại mọi người trong họ.' : 'Tin hiện ngay trên Tổng quan của mọi người. Thông báo đẩy tới điện thoại sẽ hoạt động khi cài xong trạm gửi tin.'}</p>
+    <div class="fbar"><button type="button" class="abtn" id="nCancel">Hủy</button><button class="abtn blue"><i class="fa-solid fa-paper-plane"></i>Đăng tin</button></div>
+    </form>`, { beforeClose: () => true });
+  const lunarHint = () => {
+    const v = $('n_death').value; if (!v) return;
+    const [y, mo, d] = v.slice(0, 10).split('-').map(Number), l = solarToLunar(d, mo, y), a = ageOf({ ...p, alive: false, deathSolar: `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')}/${y}` });
+    $('n_lunar').value = [l ? formatLunar(l) : '', a !== null ? `hưởng thọ ${a}` : ''].filter(Boolean).join(' · ');
+  };
+  if ($('n_death')) { $('n_death').oninput = lunarHint; lunarHint(); }
+  if ($('n_sp')) { const s = () => { $('n_spn').hidden = !!$('n_sp').value; }; $('n_sp').onchange = s; if (sp[0]) $('n_sp').value = sp[0].id; s(); }
+  $('nCancel').onclick = () => closeSheet(true);
+  $('nf').onsubmit = async (e) => {
+    e.preventDefault();
+    const v = (id) => ($(id) ? $(id).value.trim() : '');
+    const events = EV.map(([k, n]) => ({ name: n, at: v('ev_' + k), place: v('evp_' + k) })).filter((x) => x.at || x.place);
+    const news = { type, personIds: p ? [p.id] : [], place: v('n_place'), contact: { name: v('n_cn'), phone: v('n_cp') }, body: v('n_body'), events };
+    let death = null;
+    if (type === 'tang') {
+      const [y, mo, d] = v('n_death').slice(0, 10).split('-').map(Number), ds = `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')}/${y}`, l = solarToLunar(d, mo, y);
+      news.title = `Cáo phó: ${pname(p)}`; news.burial = v('n_burial');
+      news.events.unshift({ name: 'Mất lúc', at: v('n_death'), place: '' });
+      death = { id: p.id, name: pname(p), deathSolar: ds, deathLunar: l ? `${String(l.day).padStart(2, '0')}/${String(l.month).padStart(2, '0')}/${l.year}` : '', burial: v('n_burial') };
+    } else if (type === 'hy') {
+      const o = v('n_sp') ? byId(v('n_sp')) : null, on = o ? pname(o) : v('n_spn');
+      if (!on) return toast('Nhập tên ' + (p.gender === 'f' ? 'chú rể' : 'cô dâu'));
+      news.title = `Báo hỷ: ${pname(p)} & ${on}`; if (o) news.personIds.push(o.id);
+    } else news.title = v('n_title');
+    if (!news.title) return toast('Nhập tiêu đề');
+    if (!await ask({ title: `Đăng ${T.n.toLowerCase()}?`, msg: `<b>${esc(news.title)}</b><br>Mọi người trong họ sẽ thấy tin này${D.notifyReady() ? ' và nhận thông báo trên điện thoại' : ''}.${death ? '<br>Hồ sơ sẽ được ghi <b>đã mất</b> ngày ' + esc(death.deathSolar) + '.' : ''}`, ok: 'Đăng tin' })) return;
+    busy('Đang đăng…');
+    try { await D.postNews(S.tree.id, news, death); busy(); S.news = null; closeSheet(true); toast('Đã đăng tin'); if (S.tab === 'news') renderNews($('main')); else if (S.tab === 'home') newsBlock(); refreshBell(); }
+    catch (er) { busy(); toast(D.errMsg(er), 5000); }
+  };
+}
+// ---------- Hộp thông báo: tin dòng họ + giỗ / sinh nhật 7 ngày tới + chờ duyệt. Đã đọc lưu trên server ----------
+async function inboxItems() {
+  if (!S.tree) return [];
+  const t = S.tree.id;
+  if (!S.inRead || S.inRead.tree !== t) S.inRead = { tree: t, read: await D.getInboxRead(t) };
+  let news = [];
+  try { news = await loadNews(); } catch (e) { /* bỏ qua */ }
+  const items = news.filter((x) => x.at && Date.now() - x.at.toMillis() < 180 * 864e5).map((x) => {
+    const T = NEWS_T[x.type] || NEWS_T.chung;
+    return { key: 'n:' + x.id, at: x.at.toMillis(), when: `${x.byName || ''} · ${ago(x.at)}`, ic: T.ic, cls: T.cls, title: x.title, sub: `${T.n} · ${newsSummary(x) || ''}`.replace(/ · $/, ''), open: () => showNews(x) };
+  });
+  if (S.A) {
+    const U = upcoming(), y = new Date().getFullYear();
+    for (const e of [...U.gio, ...U.sn].filter((v) => v.n.daysLeft <= 7)) {
+      const at = new Date(e.n.solar[2], e.n.solar[1] - 1, e.n.solar[0]).getTime() - 7 * 864e5;   // hiện từ 7 ngày trước
+      items.push({ key: `${e.kind}:${e.p.id}:${e.n.solar[2] || y}`, at, when: e.n.daysLeft ? `còn ${e.n.daysLeft} ngày` : 'hôm nay', ic: e.kind === 'gio' ? 'fa-fire-flame-curved' : 'fa-cake-candles', cls: e.kind === 'gio' ? 'gio' : 'sn',
+        title: `${e.kind === 'gio' ? 'Giỗ' : 'Sinh nhật'} ${pname(e.p)}${e.n.daysLeft ? ` – còn ${e.n.daysLeft} ngày` : ' – hôm nay'}`,
+        sub: e.kind === 'gio' ? `${e.g[0]}/${e.g[1]} âm lịch · ${fmtD(e.n.solar)}` : `${fmtD(e.n.solar)} · tròn ${e.n.age} tuổi`, open: () => showPerson(e.p.id) });
+    }
+  }
+  if (S.propCount && (canEdit() || isLiner())) {
+    const d = new Date(); items.push({ key: `props:${d.getFullYear()}${d.getMonth()}${d.getDate()}:${S.propCount}`, at: Date.now(), when: 'hôm nay', ic: 'fa-inbox', cls: 'props',
+      title: `${S.propCount} thông tin chờ duyệt`, sub: 'Từ link nhờ điền và đề xuất của thành viên', open: () => go('props') });
+  }
+  items.sort((a, b) => b.at - a.at);
+  items.forEach((x) => (x.unread = !S.inRead.read[x.key]));
+  return items;
+}
+async function refreshBell() {
+  const b = $('bellN'); if (!b || !S.tree) return;
+  const n = (await inboxItems()).filter((x) => x.unread).length;
+  if (!$('bellN')) return;
+  $('bellN').textContent = n > 99 ? '99+' : n; $('bellN').hidden = !n;
+  if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
+  if (S.tab === 'inbox' && $('ibList')) renderInbox($('main'), true);
+}
+async function renderInbox(m, quiet) {
+  if (!quiet) m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
+  const items = await inboxItems();
+  if (S.tab !== 'inbox') return;
+  S.ibf = S.ibf || '';
+  const shown = items.filter((x) => !S.ibf || (S.ibf === 'unread' ? x.unread : x.cls === S.ibf));
+  const nUn = items.filter((x) => x.unread).length;
+  m.innerHTML = `<div class="page">
+    <div class="listbar"><div class="filters">${[['', 'Tất cả'], ['unread', `Chưa đọc${nUn ? ' (' + nUn + ')' : ''}`], ['tang', 'Báo tang'], ['hy', 'Báo hỷ'], ['gio', 'Giỗ'], ['sn', 'Sinh nhật'], ['chung', 'Thông báo']]
+      .map(([k, n]) => `<button class="chip ${S.ibf === k ? 'on' : ''}" data-ibf="${k}">${n}</button>`).join('')}</div>
+      <div style="display:flex;gap:8px;margin-top:6px">${nUn ? '<button class="abtn sm" id="ibAll"><i class="fa-solid fa-check-double"></i>Đánh dấu đã đọc hết</button>' : ''}<button class="abtn sm" id="ibSet" style="margin-left:auto"><i class="fa-solid fa-gear"></i>Cài đặt thông báo</button></div></div>
+    <div class="panel" id="ibList">${shown.length ? shown.map((x, i) => `<div class="item ibit ${x.unread ? 'unread' : ''}" data-ib="${i}"><div class="nic ${x.cls}"><i class="fa-solid ${x.ic}"></i></div>
+      <div class="t"><b>${esc(x.title)}</b><span>${esc(x.sub)}</span><span>${esc(x.when)}</span></div>${x.unread ? '<i class="udot" title="Chưa đọc"></i>' : ''}</div>`).join('')
+      : `<div class="empty" style="padding:20px"><i class="fa-regular fa-bell"></i>${S.ibf === 'unread' ? 'Đã đọc hết' : 'Chưa có thông báo'}</div>`}</div>
+    <p class="note">Thông báo trên điện thoại có lỡ xóa thì vẫn xem lại được ở đây.</p></div>`;
+  m.querySelectorAll('[data-ibf]').forEach((b) => (b.onclick = () => { S.ibf = b.dataset.ibf; renderInbox(m, true); }));
+  m.querySelectorAll('[data-ib]').forEach((el) => (el.onclick = async () => {
+    const x = shown[+el.dataset.ib]; x.open();
+    if (x.unread) { S.inRead.read[x.key] = true; D.markInboxRead(S.tree.id, [x.key]).catch(() => {}); refreshBell(); }
+  }));
+  if ($('ibAll')) $('ibAll').onclick = async () => { const ks = items.filter((x) => x.unread).map((x) => x.key); ks.forEach((k) => (S.inRead.read[k] = true)); await D.markInboxRead(S.tree.id, ks).catch(() => {}); refreshBell(); renderInbox(m, true); };
+  $('ibSet').onclick = pushSettings;
+}
+/** Nút "Sự kiện" ở hồ sơ người → chọn loại tin */
+async function personEvent(p) {
+  const opts = [['tang', '🕯  Báo tang'], ['hy', '🎉  Báo hỷ (cưới hỏi)']];
+  const v = await pick({ title: `Sự kiện của ${pname(p)}`, options: opts });
+  if (v) newsForm(v, p);
 }
 
 // ======================= Tab Cây =======================
@@ -715,7 +949,8 @@ function showPerson(id, refresh) {
       <div class="r"><span>${p.gender === 'f' ? 'Chồng' : 'Vợ'}</span><b class="rel">${spouses.length ? relBtns(spouses) : '—'}</b></div>
       <div class="r"><span>Con (${kids.length})</span><b class="rel">${kids.length ? relBtns(kids) : '—'}</b></div>
     </div>
-    <div class="sacts"><button class="abtn full" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button>
+    <div class="sacts"><button class="abtn ${canPost() ? '' : 'full'}" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button>
+      ${canPost() ? '<button class="abtn" data-a="event"><i class="fa-solid fa-calendar-plus"></i>Sự kiện</button>' : ''}
       ${D.isRoot() && S.tree && !(D.myTrees().find((t) => t.id === S.tree.id) || {}).shared
         ? (myMe() === id ? '<button class="abtn full" data-a="unclaim"><i class="fa-solid fa-user-xmark"></i>Bỏ gắn tài khoản với người này</button>'
           : `<button class="abtn full" data-a="claim"><i class="fa-solid fa-user-check"></i>Đây là tôi${myMe() ? ' (chuyển sang người này)' : ''}</button>`)
@@ -805,6 +1040,7 @@ async function personAction(p, a) {
   if (a === 'claim') return claimMe(p);
   if (a === 'unclaim') return claimMe(p, true);
   if (a === 'chiefnext') return pickChiefNext(p);
+  if (a === 'event') return personEvent(p);
   if (a === 'chiefundo') return undoChiefPick(p);
   if (a === 'edit') return personForm(p, { mode: 'edit' });
   if (a === 'child') return personForm(null, { mode: 'child', of: p });
@@ -1780,6 +2016,8 @@ function bindCollectCards(m, list, rerender) {
 // ======================= Nhiều hơn (giống ech-client: header xanh + lưới chức năng theo nhóm) =======================
 /** Mô tả + màu icon cho từng mục ở trang Nhiều hơn */
 const MORE_INFO = {
+  inbox: ['Tin đã nhận, đã đọc / chưa đọc', '#dc2626'],
+  news: ['Báo tang, báo hỷ, thông báo của dòng họ', '#b91c1c'],
   props: ['Thông tin nhập hộ, đề xuất sửa chờ duyệt', '#f59e0b'], log: ['Ai đã thêm, sửa, xóa gì', '#64748b'],
   users: ['Tạo tài khoản, phân quyền, gắn người', '#7c3aed'], trees: ['Gia phả của dòng họ, chia sẻ, được chia sẻ', '#0891b2'],
 };
@@ -1790,7 +2028,7 @@ function renderMore(m) {
   groups['Tài khoản'] = [
     { act: 'me', ic: 'fa-id-card', n: 'Thông tin tài khoản', d: 'Họ tên, số điện thoại', c: '#0070f4' },
     { act: 'pw', ic: 'fa-key', n: 'Đổi mật khẩu', d: 'Nên đổi sau lần đăng nhập đầu', c: '#059669' },
-    { act: 'push', ic: 'fa-bell', n: 'Thông báo', d: 'Nhắc ngày giỗ, sinh nhật, chờ duyệt', c: '#dc2626' },
+    { act: 'push', ic: 'fa-bell-concierge', n: 'Cài đặt thông báo', d: 'Nhận gì trên điện thoại: giỗ, sinh nhật, tin họ…', c: '#dc2626' },
   ];
   groups['Ứng dụng'] = [
     { act: 'theme', ic: 'fa-sliders', n: 'Giao diện', d: 'Cỡ chữ, sáng / tối, cách gọi theo miền', c: '#db2777' },

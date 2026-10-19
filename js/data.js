@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792399284728';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792400633049';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -455,6 +455,55 @@ export const resolveProposal = (treeId, id, status) =>
 export async function listLog(treeId, n = 60) {
   const s = await getDocs(query(collection(db, 'trees', treeId, 'log'), orderBy('at', 'desc'), limit(n)));
   return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+}
+
+// ======================= Tin dòng họ: báo tang, báo hỷ, thông báo (BA-tin-hieu-hy.md) =======================
+/**
+ * Đăng tin. death = { id, name, deathSolar, deathLunar, burial } khi báo tang → cùng lần lưu cập nhật hồ sơ người mất
+ * (luật bảo mật cho mọi thành viên sửa đúng các mục này khi kèm tin báo tang của chính họ).
+ */
+export async function postNews(treeId, news, death) {
+  const ref = doc(collection(db, 'trees', treeId, 'news')), b = writeBatch(db);
+  b.set(ref, clean({ ...news, personIds: news.personIds || [], by: me.uid, byName: myName(), at: serverTimestamp(), status: 'published' }));
+  let upd = null;
+  if (death) {
+    const old = SYNC && SYNC.treeId === treeId ? SYNC.map.get(death.id) || {} : {};
+    upd = clean({ alive: false, deathSolar: death.deathSolar || '', deathLunar: death.deathLunar || '', ...(death.burial ? { burial: death.burial } : {}), deathNews: ref.id });
+    b.update(doc(db, 'trees', treeId, 'persons', death.id), { ...upd, ...stamp() });
+    const before = Object.fromEntries(Object.keys(upd).filter((k) => k !== 'deathNews').map((k) => [k, old[k] ?? null]));
+    const after = { ...upd }; delete after.deathNews;
+    logOp(b, treeId, 'edit', { id: death.id, name: death.name }, forLog(before), forLog(after));
+  }
+  const commit = b.commit();
+  if (upd) patchLocal(death.id, upd);
+  if (navigator.onLine) await commit;   // có mạng: chờ để báo lỗi nếu bị chặn; mất mạng: lưu tạm, tự gửi khi có mạng
+  else commit.catch(() => {});
+  notifyNews(treeId, ref.id).catch((e) => console.warn('notify', e));
+  return ref.id;
+}
+/** Báo trạm gửi thông báo (Cloudflare Worker) – chưa cài thì bỏ qua */
+export async function notifyNews(treeId, newsId) {
+  if (!workerUrl || isEmu) return false;
+  const r = await fetch(workerUrl.replace(/\/$/, '') + '/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await me.getIdToken()) },
+    body: JSON.stringify({ tree: treeId, news: newsId }) });
+  return r.ok;
+}
+export const notifyReady = () => !!workerUrl;
+export async function listNews(treeId, n = 40) {
+  const s = await getDocs(query(collection(db, 'trees', treeId, 'news'), orderBy('at', 'desc'), limit(n)));
+  return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).filter((x) => x.status !== 'removed');
+}
+export const updateNews = (treeId, id, data) => updateDoc(doc(db, 'trees', treeId, 'news', id), data);
+/** Thắp hương / chúc mừng (bấm lại = bỏ) */
+export const reactNews = (treeId, id, on) => updateDoc(doc(db, 'trees', treeId, 'news', id), { [`reactions.${me.uid}`]: on ? myName() || 1 : deleteField() });
+
+// ======================= Hộp thông báo: đã đọc / chưa đọc (lưu trên server – đổi máy vẫn giữ) =======================
+export async function getInboxRead(treeId) {
+  try { const s = await getDoc(doc(db, 'inboxRead', `${me.uid}_${treeId}`)); return (s.exists() && s.data().read) || {}; } catch (e) { return {}; }
+}
+export async function markInboxRead(treeId, keys) {
+  if (!keys.length) return;
+  await setDoc(doc(db, 'inboxRead', `${me.uid}_${treeId}`), { read: Object.fromEntries(keys.map((k) => [k, true])), updatedAt: serverTimestamp() }, { merge: true });
 }
 
 /** Tạo sẵn mã cho người mới (để nối quan hệ trong cùng 1 batch) */
