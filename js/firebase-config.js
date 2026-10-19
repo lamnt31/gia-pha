@@ -10,6 +10,7 @@ export const firebaseConfig = {
 // Site key reCAPTCHA v3 cho App Check (README bước 6). Để trống = chưa bật.
 export const recaptchaSiteKey = '';
 // Khóa công khai Web Push (VAPID) cho thông báo giỗ / sinh nhật. Khóa bí mật chỉ nằm trong Secrets của repo gia-pha-cron.
-export const vapidPublicKey = 'BJ_1RRY3ga8XhzXxiVmPiFAwehnF5UvSDr-sRcYuOgpDr8CUmekxbTGOmziVfwGDU8ckiAQ5HXhgCtyUQPpzkU0';
+// (đổi khóa 19/10/2026 – app tự đăng ký lại cho máy đã bật thông báo)
+export const vapidPublicKey = 'BESAMFoQTOh8T3KE2vOX_Z60VLzul7O6x43FD84G6nbyo2az8sD8jNXShf7c98cqY-KrUygEnW7N-CrmWHcIYVg';
 // Trạm gửi thông báo tức thì (Cloudflare Worker – docs/SETUP-worker.md): báo tang, báo hỷ, tin nhắn. Để trống = chưa cài (tin vẫn đăng, chỉ chưa đẩy).
-export const workerUrl = '';
+export const workerUrl = 'https://gia-pha-push.giapha-lamnt.workers.dev';

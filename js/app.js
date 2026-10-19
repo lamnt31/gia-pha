@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792400633049';
-import * as D from './data.js?v=1792400633049';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792400633049';
-import { makeKin, DIALECTS } from './kin.js?v=1792400633049';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792400633049';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792401459619';
+import * as D from './data.js?v=1792401459619';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792401459619';
+import { makeKin, DIALECTS } from './kin.js?v=1792401459619';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792401459619';
 
-const APP_VER = '19/10 16:03';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 16:17';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -114,7 +114,8 @@ const pname = (p) => (p && p.name) || 'Chưa rõ tên';
   if (c) { store('pendingLink', c); u.searchParams.delete('link'); }
   if (sh) { store('pendingShare', sh); u.searchParams.delete('share'); }
   const tb = u.searchParams.get('tab'); if (tb) { store('tab', tb); u.searchParams.delete('tab'); }
-  if (c || sh || tb) history.replaceState(null, '', u); }
+  const nw = u.searchParams.get('news'); if (nw) { store('openNews', nw); u.searchParams.delete('news'); }   // bấm thông báo tin → mở thẳng tin
+  if (c || sh || tb || nw) history.replaceState(null, '', u); }
 applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
 initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
@@ -140,6 +141,7 @@ else D.onUser(async (u, err) => {
   { const ps = store('pendingShare'); if (ps) { store('pendingShare', null); setTimeout(() => receiveShare(ps), 900); } }
   rememberAcc({ code: D.clan.code, user: D.account.username, name: D.account.name || '', clan: D.clan.name || '' });
   D.markEmailOk().catch(() => {});   // đã đặt mật khẩu qua email → email đúng
+  D.ensurePushKey().catch((e) => console.warn('push key', e));   // đổi khóa thông báo → tự đăng ký lại
   const trees = D.myTrees(), last = store('lastTree'), oal = store('openAfterLogin');
   if (oal && oal.clan === D.clan.code) { store('openAfterLogin', null); if (trees.some((t) => t.id === oal.tree)) { S.jumpAfterLoad = oal.person; return openTree(oal.tree, true); } }
   const first = trees.find((t) => t.id === last) || trees[0];
@@ -715,6 +717,8 @@ async function renderInbox(m, quiet) {
   if (!quiet) m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
   const items = await inboxItems();
   if (S.tab !== 'inbox') return;
+  const want = store('openNews');
+  if (want) { store('openNews', null); const it = items.find((x) => x.key === 'n:' + want); if (it) setTimeout(() => { it.open(); if (it.unread) { S.inRead.read[it.key] = true; D.markInboxRead(S.tree.id, [it.key]).catch(() => {}); refreshBell(); } }, 200); }
   S.ibf = S.ibf || '';
   const shown = items.filter((x) => !S.ibf || (S.ibf === 'unread' ? x.unread : x.cls === S.ibf));
   const nUn = items.filter((x) => x.unread).length;
@@ -1683,14 +1687,15 @@ async function pushSettings() {
       <div class="cfgrow" style="align-items:flex-start"><div><b>Báo trước</b><small>Chọn một hoặc nhiều</small></div>
         <div class="ckcol">${PUSH_DAYS.map(([v, l]) => `<label class="ck"><input type="checkbox" name="pd" value="${v}" ${days.includes(v) ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
       <div class="cfgrow" style="align-items:flex-start"><div><b>Loại</b></div>
-        <div class="ckcol"><label class="ck"><input type="checkbox" name="pk" value="gio" ${kinds.includes('gio') ? 'checked' : ''}>Ngày giỗ</label><label class="ck"><input type="checkbox" name="pk" value="sn" ${kinds.includes('sn') ? 'checked' : ''}>Sinh nhật</label><label class="ck"><input type="checkbox" name="pk" value="duyet" ${kinds.includes('duyet') ? 'checked' : ''}>Thông tin chờ duyệt <small style="color:var(--muted)">(biên tập, quản trị)</small></label></div></div>
+        <div class="ckcol"><label class="ck"><input type="checkbox" name="pk" value="gio" ${kinds.includes('gio') ? 'checked' : ''}>Ngày giỗ</label><label class="ck"><input type="checkbox" name="pk" value="sn" ${kinds.includes('sn') ? 'checked' : ''}>Sinh nhật</label><label class="ck"><input type="checkbox" name="pk" value="duyet" ${kinds.includes('duyet') ? 'checked' : ''}>Thông tin chờ duyệt <small style="color:var(--muted)">(biên tập, quản trị)</small></label>
+          <label class="ck"><input type="checkbox" id="pkNews" ${st.news !== false ? 'checked' : ''}>Tin dòng họ <small style="color:var(--muted)">(báo tang, báo hỷ, thông báo – gửi ngay)</small></label></div></div>
     </div>
     <div class="sacts"><button class="abtn blue" id="pushSave"><i class="fa-solid fa-check"></i>Lưu</button><button class="abtn" id="pushTest" ${st.supported && !iosNotInstalled ? '' : 'disabled'}><i class="fa-solid fa-bell"></i>Gửi thử</button></div>
     <p class="note">Mỗi máy (điện thoại, máy tính) bật riêng. Đổi tài khoản trên cùng máy thì thông báo theo tài khoản bật gần nhất.</p>`;
-  const read = () => ({ days: [...$('sheet').querySelectorAll('input[name=pd]:checked')].map((x) => Number(x.value)), kinds: [...$('sheet').querySelectorAll('input[name=pk]:checked')].map((x) => x.value) });
+  const read = () => ({ days: [...$('sheet').querySelectorAll('input[name=pd]:checked')].map((x) => Number(x.value)), kinds: [...$('sheet').querySelectorAll('input[name=pk]:checked')].map((x) => x.value), news: $('pkNews').checked });
   $('pushSave').onclick = async () => {
     const v = read(), on = $('pushOn').checked;
-    if (on && !v.kinds.length) return toast('Chọn ít nhất 1 loại thông báo');
+    if (on && !v.kinds.length && !v.news) return toast('Chọn ít nhất 1 loại thông báo');
     busy('Đang lưu…');
     try { if (on) await D.enablePush(v); else await D.disablePush(); busy(); toast(on ? 'Đã bật thông báo – mỗi sáng 7h' : 'Đã tắt thông báo'); closeSheet(true); }
     catch (e) { busy(); toast(D.errMsg(e), 6000); }

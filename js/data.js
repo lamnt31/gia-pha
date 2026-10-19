@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792400633049';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792401459619';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -627,16 +627,32 @@ export async function pushStatus() {
   const sub = reg && (await reg.pushManager.getSubscription());
   let saved = null;
   if (sub) { try { const s = await getDoc(doc(db, 'pushSubs', await subId(sub.endpoint))); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* chưa có */ } }
-  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn', 'duyet'] };
+  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn', 'duyet'], news: !(saved && saved.noNews) };
 }
-export async function enablePush({ days, kinds }) {
+/** Đổi khóa VAPID → máy đã bật thông báo tự đăng ký lại với khóa mới, giữ nguyên lựa chọn (không phải bật lại) */
+export async function ensurePushKey() {
+  if (!pushSupported() || Notification.permission !== 'granted' || !me) return;
+  const reg = await navigator.serviceWorker.getRegistration(); if (!reg) return;
+  const sub = await reg.pushManager.getSubscription(); if (!sub) return;
+  const cur = sub.options && sub.options.applicationServerKey ? btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
+  if (!cur || cur === vapidPublicKey) return;
+  const oldId = await subId(sub.endpoint);
+  let saved = null; try { const s = await getDoc(doc(db, 'pushSubs', oldId)); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* không có */ }
+  await sub.unsubscribe();
+  try { await deleteDoc(doc(db, 'pushSubs', oldId)); } catch (e) { /* của người khác / đã xóa */ }
+  if (!saved) return;   // máy này chưa từng bật cho tài khoản này
+  const nsub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) });
+  await setDoc(doc(db, 'pushSubs', await subId(nsub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(nsub)), days: saved.days || [0, 3], kinds: saved.kinds || ['gio', 'sn', 'duyet'],
+    ...(saved.noNews ? { noNews: true } : {}), ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
+}
+export async function enablePush({ days, kinds, news = true }) {
   if (!pushSupported()) throw new Error('Trình duyệt này chưa hỗ trợ thông báo đẩy.');
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('Bạn chưa cho phép thông báo. Hãy bật lại quyền Thông báo cho trang này trong cài đặt trình duyệt.');
   const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('sw.js'));
   await navigator.serviceWorker.ready;
   const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) }));
-  await setDoc(doc(db, 'pushSubs', await subId(sub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(sub)), days, kinds,
+  await setDoc(doc(db, 'pushSubs', await subId(sub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(sub)), days, kinds, noNews: !news,
     ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
 }
 export async function disablePush() {
