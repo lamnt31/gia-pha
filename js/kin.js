@@ -114,7 +114,9 @@ export function makeKin(A, meId, dialect = 'bac') {
   const anchor = !by(me.fatherId) && !by(me.motherId) ? mySp.find(inHo) : null;
   const side = anchor ? (me.gender === 'f' ? ' (bên chồng)' : ' (bên vợ)') : '';
 
-  return (id) => {
+  // con nuôi: vẫn gọi như con đẻ, thêm "(nuôi)" để nhận biết
+  const nuoi = (x, r) => (r && x.adopted && r.t !== 'Tôi' ? { ...r, t: r.t + ' (nuôi)' } : r);
+  const kin = (id) => {
     const x = by(id); if (!x) return null;
     if (x.id === me.id) return { t: 'Tôi', hint: '' };
     if (mySp.some((s) => s.id === x.id)) return { t: x.gender === 'f' ? 'Vợ' : 'Chồng', hint: '' };
@@ -137,4 +139,5 @@ export function makeKin(A, meId, dialect = 'bac') {
     }
     return null;
   };
+  return (id) => nuoi(by(id) || {}, kin(id));
 }

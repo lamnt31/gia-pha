@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792395583464';
-import * as D from './data.js?v=1792395583464';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792395583464';
-import { makeKin, DIALECTS } from './kin.js?v=1792395583464';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792395583464';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792396233408';
+import * as D from './data.js?v=1792396233408';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792396233408';
+import { makeKin, DIALECTS } from './kin.js?v=1792396233408';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792396233408';
 
-const APP_VER = '19/10 14:39';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 14:50';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1071,6 +1071,7 @@ const LFILTERS = [
   { k: 'nophoto', n: 'Chưa có ảnh', g: 'photo', test: (p) => !p.photo },
   { k: 'nobirth', n: 'Thiếu ngày sinh', g: 'nb', test: (p) => !p.birthSolar && !p.birthLunar },
   { k: 'nogio', n: 'Mất – thiếu ngày giỗ', g: 'ng', test: (p) => isDead(p) && !gioOf(p) },
+  { k: 'adopted', n: 'Con nuôi', g: 'adopted', test: (p) => !!p.adopted },
   { k: 'noheir', n: 'Vô hậu', g: 'noheir', test: (p) => S.A.noHeir(p.id) },
   { k: 'loose', n: 'Chưa nối', g: 'loose', test: (p, c) => c.loose(p) },
 ];
@@ -1106,7 +1107,7 @@ function renderList(m) {
     $('lcount').innerHTML = active ? `<span>Kết quả: <b>${list.length}</b> / ${S.persons.length} người · ${esc(names.join(' + '))}</span><button class="linkbtn" id="lclear"><i class="fa-solid fa-xmark"></i> Bỏ lọc</button>`
       : `<span>Tất cả: <b>${S.persons.length}</b> người</span>`;
     if ($('lclear')) $('lclear').onclick = () => { S.fl.clear(); S.gen = ''; S.q = ''; renderList(m); };
-    $('lres').innerHTML = list.length ? list.slice(0, 500).map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p), p.branch].filter(Boolean).join(' · '))}</span></div>${isDead(p) ? '<span class="when info">Đã mất</span>' : ''}</div>`).join('')
+    $('lres').innerHTML = list.length ? list.slice(0, 500).map((p) => `<div class="item" data-p="${esc(p.id)}">${avatar(p)}<div class="t"><b>${esc(pname(p))}</b><span>${esc([S.A.label(p.id), lifeText(p), p.branch, p.adopted ? 'Con nuôi' : ''].filter(Boolean).join(' · '))}</span></div>${isDead(p) ? '<span class="when info">Đã mất</span>' : ''}</div>`).join('')
       + (list.length > 500 ? `<div class="empty" style="padding:14px">… còn ${list.length - 500} người, hãy gõ tìm cụ thể hơn</div>` : '')
       : `<div class="empty"><i class="fa-solid fa-magnifying-glass"></i>Không có ai phù hợp</div>`;
     $('lres').querySelectorAll('[data-p]').forEach((el) => (el.onclick = () => { S.sel = el.dataset.p; showPerson(el.dataset.p); }));

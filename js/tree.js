@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792395583464';
+import { esc } from './ui.js?v=1792396233408';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -186,7 +186,7 @@ export const branchColor = (i) => BRANCH_COLORS[i % BRANCH_COLORS.length];
 export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranches = true, kin = null, meId = '', canEd = null) {
   const node = (n) => {
     const p = n.p, dead = p.alive === false || p.deathSolar || p.deathLunar || p.deathLunarDay;
-    const nh = n.kind === 'blood' && A.noHeir(p.id), icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0);
+    const nh = n.kind === 'blood' && A.noHeir(p.id), ad = !!p.adopted, icons = (linked.has(p.id) ? 1 : 0) + (nh ? 1 : 0) + (ad ? 1 : 0);
     const bi = colorBranches && p.gender !== 'f' && n.kind === 'blood' ? A.branch.get(p.id) : undefined;
     const cls = `tn ${p.gender === 'f' ? 'f' : 'm'} ${dead ? 'dead' : ''} ${nh ? 'noheir' : ''} ${bi !== undefined ? 'br' : ''} ${n.kind} ${p.id === selectedId ? 'sel' : ''} ${p.id === meId ? 'me' : ''}`;
     const name = p.name || 'Chưa rõ tên';
@@ -206,6 +206,7 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
       <text x="${x}" y="57" class="gen">${esc(gen)}</text>
       ${linked.has(p.id) ? `<text x="${NW - 9}" y="17" text-anchor="end" class="lk">&#xf0c1;</text>` : ""}
       ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}
+      ${ad ? `<g class="ad"><title>Con nuôi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0) - (nh ? 15 : 0)}" y="17" text-anchor="end">&#xf4be;</text></g>` : ""}
       ${p.id === meId ? `<g class="mepin"><title>Đây là bạn</title><circle class="pulse" cx="${NW / 2}" cy="-6" r="13"/><circle cx="${NW / 2}" cy="-6" r="12"/><text x="${NW / 2}" y="-1.5" text-anchor="middle">&#xf3c5;</text></g>` : ''}
       ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><rect class="hit" x="${NW - 46}" y="${NH - 30}" width="58" height="44" rx="10"/><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
