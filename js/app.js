@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792398316411';
-import * as D from './data.js?v=1792398316411';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792398316411';
-import { makeKin, DIALECTS } from './kin.js?v=1792398316411';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792398316411';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792398814668';
+import * as D from './data.js?v=1792398814668';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792398814668';
+import { makeKin, DIALECTS } from './kin.js?v=1792398814668';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792398814668';
 
-const APP_VER = '19/10 15:25';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 15:33';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -688,7 +688,7 @@ function showPerson(id, refresh) {
   const html = `
     <div class="phead">${avatar(p, 'ph').replace(/<\/div>$/, isDead(p) ? '<span class="lotusb" title="Đã mất"><i class="fa-solid fa-spa"></i></span></div>' : '</div>')}<div style="min-width:0"><h2>${esc(pname(p))}</h2>
       <div class="pg">${esc(A.label(id))}${A.spouseIn.has(id) ? (p.gender === 'f' ? ' · con dâu' : ' · con rể') : ''}${S.tree.anchorId === id ? ' · <i class="fa-solid fa-flag"></i> mốc đời 1' : ''}</div>
-      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.chief && A.chief.has(id) ? `<span class="tag chieftag ${A.chiefPick.has(id) ? 'pk' : ''}"><i class="fa-solid fa-crown"></i> ${A.chiefHead.has(id) ? 'Trưởng họ hiện tại' + (A.chiefPick.has(id) ? ' (gia đình chọn)' : '') : A.chiefPassed.has(id) ? 'Đã làm trưởng họ · đã chuyển' : A.chiefPick.has(id) ? 'Nối trưởng họ (gia đình chọn)' : 'Dòng trưởng họ'}</span>` : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
+      <div>${p.nick ? `<span class="tag">Thường gọi: ${esc(p.nick)}</span>` : ''}${p.alias ? `<span class="tag">Tên húy: ${esc(p.alias)}</span>` : ''}${p.branch ? `<span class="tag">${esc(p.branch)}</span>` : ''}${p.adopted ? '<span class="tag">Con nuôi</span>' : ''}${A.chief && A.chief.has(id) ? `<span class="tag chieftag ${A.chiefPick.has(id) ? 'pk' : ''}"><i class="fa-solid fa-crown"></i> ${A.chiefNow.has(id) ? 'Trưởng họ hiện tại' + (A.chiefPick.has(id) ? ' (gia đình chọn)' : '') : A.chiefPassed.has(id) ? 'Đã làm trưởng họ · đã chuyển' : A.chiefPick.has(id) ? 'Nối trưởng họ (gia đình chọn)' : 'Dòng trưởng họ'}</span>` : ''}${A.noHeir(id) ? '<span class="tag nohtag"><i class="fa-solid fa-circle-stop"></i> Vô hậu – không có con trai nối dõi</span>' : ''}</div></div></div>
     <div class="rows">
       ${(() => { const k = kinOf(id); return k && k.t !== 'Tôi' ? row('fa-people-arrows', 'Quan hệ với bạn', `${esc(k.t)}${k.hint ? `<small>${esc(k.hint)}</small>` : ''}`) : k ? row('fa-user-check', 'Tài khoản', 'Đây là bạn') : ''; })()}
       ${(() => { const u = linkedUser(id); return u && u.uid !== D.account.uid ? row('fa-user-check', 'Tài khoản', `${esc(u.name || u.username)} <small>@${esc(u.username)}</small>`) : ''; })()}

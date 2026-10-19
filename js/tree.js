@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792398316411';
+import { esc } from './ui.js?v=1792398814668';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -82,9 +82,11 @@ export function analyze(persons, anchorId) {
   const dkey = (p) => { const s = String(p.deathSolar || p.deathLunar || ''), m = s.match(/(?:(\d{1,2})\/)?(?:(\d{1,2})\/)?(\d{3,4})$/); return m ? +m[3] * 10000 + (+m[2] || 0) * 100 + (+m[1] || 0) : 0; };
   const diedBefore = (k, f) => isDeadP(k) && (!isDeadP(f) || (dkey(k) && dkey(f) && dkey(k) < dkey(f)));
   const hasBioSon = (k) => (allKids.get(k.id) || []).some((c) => c.gender !== 'f' && !c.adopted && c.fatherId === k.id);
+  const chiefNow = new Set();   // trưởng họ hiện tại: người còn sống đầu tiên đi từ ông tổ xuống theo dòng trưởng
   for (const r of roots) {
     if (r.gender === 'f') continue;
     let cur = r;
+    const order = [r];
     for (;;) {
       const pick = cur.chiefNext && byId.get(cur.chiefNext);
       const nx = pick && !chief.has(pick.id) && pick.id !== cur.id ? pick
@@ -101,11 +103,15 @@ export function analyze(persons, anchorId) {
           y = byId.get(pp);
         }
       } else chiefEdge.set(cur.id + '>' + nx.id, 'chief');
-      cur = nx;
+      cur = nx; order.push(nx);
     }   // ông tổ chưa có con trai ruột (và chưa chọn ai) → chưa có dòng trưởng
-    if (chief.has(cur.id)) chiefHead.add(cur.id);
+    if (chief.has(cur.id)) {
+      chiefHead.add(cur.id);   // cuối dòng – nơi bấm "Chuyển trưởng họ" khi đứt
+      const now = order.find((x) => !isDeadP(x));
+      if (now) chiefNow.add(now.id);
+    }
   }
-  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads, chief, chiefEdge, chiefPick, chiefHead, chiefPassed };
+  return { byId, kids: (id) => kidsOf.get(id) || [], allKids: (id) => allKids.get(id) || [], spouseIn, roots, gen, label, shown, has, noHeir, branch, branchHeads, chief, chiefEdge, chiefPick, chiefHead, chiefPassed, chiefNow };
 }
 
 /** Kiểm tra gán cha/mẹ có tạo vòng lặp không: newParent không được là con cháu của personId */
@@ -243,10 +249,10 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
       ${nh ? `<g class="nh"><title>Vô hậu – không có con trai nối dõi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0)}" y="17" text-anchor="end">&#xf28d;</text></g>` : ""}
       ${ad ? `<g class="ad"><title>Con nuôi</title><text x="${NW - 9 - (linked.has(p.id) ? 15 : 0) - (nh ? 15 : 0)}" y="17" text-anchor="end">&#xf4be;</text></g>` : ""}
       ${(() => {   // nhãn nổi mép trên: trưởng họ hiện tại (vàng) / người được chọn nối (tím)
-        const head = A.chiefHead && A.chiefHead.has(p.id);
+        const head = A.chiefNow && A.chiefNow.has(p.id);
         if (!head && !pick) return '';
         const t = head ? (pick ? 'Trưởng họ (nối)' : 'Trưởng họ') : 'Nối trưởng họ', wd = head && !pick ? 66 : 92;
-        return `<g class="cpk ${pick ? 'pk' : ''}"><title>${head ? 'Trưởng họ hiện tại' : 'Được chọn nối trưởng họ'}</title><rect x="${NW - wd - 8}" y="-9" width="${wd}" height="17" rx="8.5"/><text x="${NW - 8 - wd / 2}" y="3.5" text-anchor="middle">${t}</text></g>`;
+        return `<g class="cpk ${pick ? 'pk' : ''}"><title>${head ? 'Trưởng họ hiện tại (người còn sống đầu tiên của dòng trưởng)' : 'Được chọn nối trưởng họ'}</title><rect x="${NW - wd - 8}" y="-9" width="${wd}" height="17" rx="8.5"/><text x="${NW - 8 - wd / 2}" y="3.5" text-anchor="middle">${t}</text></g>`;
       })()}
       ${p.id === meId ? `<g class="mepin"><title>Đây là bạn</title><circle class="pulse" cx="${NW / 2}" cy="-6" r="13"/><circle cx="${NW / 2}" cy="-6" r="12"/><text x="${NW / 2}" y="-1.5" text-anchor="middle">&#xf3c5;</text></g>` : ''}
       ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><rect class="hit" x="${NW - 46}" y="${NH - 30}" width="58" height="44" rx="10"/><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
