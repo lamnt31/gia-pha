@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792145118488';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey } from './firebase-config.js?v=1792395583464';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -436,8 +436,9 @@ export async function addProposal(treeId, { personId, personName, text, kind }) 
 export async function setUserPerson(uid, treeId, personId) {
   await updateDoc(doc(db, 'clans', clan.code, 'users', uid), { [`me.${treeId}`]: personId || deleteField() });
   // quyền theo nhánh: luật bảo mật đọc members.me
+  // (bản ghi quyền của chính quản trị không cần – chủ gia phả luôn sửa được toàn cây)
   const mref = doc(db, 'trees', treeId, 'members', uid);
-  if ((await getDoc(mref)).exists()) await updateDoc(mref, { me: personId || deleteField() });
+  if (uid !== me.uid && (await getDoc(mref)).exists()) await updateDoc(mref, { me: personId || deleteField() });
   if (uid === me.uid) { account.me = { ...(account.me || {}) }; if (personId) account.me[treeId] = personId; else delete account.me[treeId]; }
 }
 /** Người trong gia phả mà tài khoản đang đăng nhập được gắn với */

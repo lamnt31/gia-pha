@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792145118488';
-import * as D from './data.js?v=1792145118488';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792145118488';
-import { makeKin, DIALECTS } from './kin.js?v=1792145118488';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792145118488';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792395583464';
+import * as D from './data.js?v=1792395583464';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792395583464';
+import { makeKin, DIALECTS } from './kin.js?v=1792395583464';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792395583464';
 
-const APP_VER = '16/10 17:05';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 14:39';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -711,7 +711,10 @@ function showPerson(id, refresh) {
       <div class="r"><span>Con (${kids.length})</span><b class="rel">${kids.length ? relBtns(kids) : '—'}</b></div>
     </div>
     <div class="sacts"><button class="abtn full" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button>
-      ${canClaim() && !linkedUser(id) ? `<button class="abtn full" data-a="claim"><i class="fa-solid fa-user-check"></i>Đây là tôi (gửi quản trị xác nhận)</button>` : ''}</div>
+      ${D.isRoot() && S.tree && !(D.myTrees().find((t) => t.id === S.tree.id) || {}).shared
+        ? (myMe() === id ? '<button class="abtn full" data-a="unclaim"><i class="fa-solid fa-user-xmark"></i>Bỏ gắn tài khoản với người này</button>'
+          : `<button class="abtn full" data-a="claim"><i class="fa-solid fa-user-check"></i>Đây là tôi${myMe() ? ' (chuyển sang người này)' : ''}</button>`)
+        : canClaim() && !linkedUser(id) ? `<button class="abtn full" data-a="claim"><i class="fa-solid fa-user-check"></i>Đây là tôi (gửi quản trị xác nhận)</button>` : ''}</div>
     ${canEditAll() ? `<div class="sacts">
       <button class="abtn blue full" data-a="edit"><i class="fa-solid fa-pen"></i>Sửa thông tin</button>
       <button class="abtn" data-a="child"><i class="fa-solid fa-child"></i>Thêm con</button>
@@ -747,7 +750,16 @@ function linkedUser(pid) { return S.tree && (S.users || []).find((u) => (u.me ||
 /** Chưa gắn với ai trong gia phả này, gia phả của dòng họ mình, không phải chỉ xem */
 // quản trị dòng họ (tài khoản cao nhất) không gắn với ai
 const canClaim = () => S.tree && !D.isRoot() && S.role !== 'viewer' && !myMe() && !(D.myTrees().find((t) => t.id === S.tree.id) || {}).shared;
-async function claimMe(p) {
+async function claimMe(p, off) {
+  // quản trị: gắn / đổi / bỏ gắn ngay (không cần duyệt), vẫn giữ toàn quyền sửa cả cây – tiện xem xưng hô khi demo
+  if (D.isRoot()) {
+    try {
+      await D.setUserPerson(D.account.uid, S.tree.id, off ? '' : p.id); KIN = null; LINE = null; refreshUsers(); closeSheet(true);
+      toast(off ? 'Đã bỏ gắn – cây về cách hiển thị thường' : `Đang xem xưng hô theo ${pname(p)} (vẫn toàn quyền sửa)`, 3500);
+      if (S.tab === 'tree') { drawTree(); if (!off) jumpTo(p.id, false); } else renderTab();
+    } catch (e) { toast(D.errMsg(e), 4000); }
+    return;
+  }
   if (store('claim_' + S.tree.id) === p.id) return toast('Bạn đã gửi yêu cầu này – chờ quản trị dòng họ xác nhận', 4000);
   if (!await ask({ title: 'Đây là tôi', msg: `Gửi quản trị dòng họ xác nhận tài khoản <b>@${esc(D.account.username)}</b> là <b>${esc(pname(p))}</b> (${esc(S.A.label(p.id))}). Sau khi xác nhận, cây sẽ tự tới ô của bạn và hiện cách gọi họ hàng.`, ok: 'Gửi' })) return;
   try { await D.addProposal(S.tree.id, { personId: p.id, personName: pname(p), kind: 'claim', text: `Xác nhận tài khoản @${D.account.username} (${D.account.name || ''}) là ${pname(p)}` }); store('claim_' + S.tree.id, p.id); toast('Đã gửi – chờ quản trị xác nhận', 4000); }
@@ -757,6 +769,7 @@ async function claimMe(p) {
 function refreshUsers() { if (D.isRoot()) D.listUsers().then((l) => { S.users = l; if (S.openPerson && sheetOpen() && !S.formOpen) showPerson(S.openPerson, true); }).catch(() => {}); }
 async function personAction(p, a) {
   if (a === 'claim') return claimMe(p);
+  if (a === 'unclaim') return claimMe(p, true);
   if (a === 'edit') return personForm(p, { mode: 'edit' });
   if (a === 'child') return personForm(null, { mode: 'child', of: p });
   if (a === 'spouse') return personForm(null, { mode: 'spouse', of: p });
