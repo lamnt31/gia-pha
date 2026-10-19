@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792401459619';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792403032024';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -478,15 +478,18 @@ export async function postNews(treeId, news, death) {
   if (upd) patchLocal(death.id, upd);
   if (navigator.onLine) await commit;   // có mạng: chờ để báo lỗi nếu bị chặn; mất mạng: lưu tạm, tự gửi khi có mạng
   else commit.catch(() => {});
-  notifyNews(treeId, ref.id).catch((e) => console.warn('notify', e));
-  return ref.id;
+  // báo trạm gửi thông báo; chờ tối đa 8 giây để báo lại cho người đăng biết đã gửi tới bao nhiêu máy
+  const push = await Promise.race([notifyNews(treeId, ref.id).catch((e) => ({ error: e.message || String(e) })), new Promise((r) => setTimeout(() => r({ pending: true }), 8000))]);
+  return { id: ref.id, push };
 }
-/** Báo trạm gửi thông báo (Cloudflare Worker) – chưa cài thì bỏ qua */
+/** Báo trạm gửi thông báo (Cloudflare Worker) – chưa cài thì bỏ qua. Trả về { sent, devices } hoặc { error } */
 export async function notifyNews(treeId, newsId) {
-  if (!workerUrl || isEmu) return false;
+  if (!workerUrl || isEmu) return { skipped: true };
   const r = await fetch(workerUrl.replace(/\/$/, '') + '/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await me.getIdToken()) },
     body: JSON.stringify({ tree: treeId, news: newsId }) });
-  return r.ok;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) console.warn('notify', r.status, j);
+  return r.ok ? j : { error: j.error || 'Lỗi ' + r.status };
 }
 export const notifyReady = () => !!workerUrl;
 export async function listNews(treeId, n = 40) {
@@ -496,6 +499,64 @@ export async function listNews(treeId, n = 40) {
 export const updateNews = (treeId, id, data) => updateDoc(doc(db, 'trees', treeId, 'news', id), data);
 /** Thắp hương / chúc mừng (bấm lại = bỏ) */
 export const reactNews = (treeId, id, on) => updateDoc(doc(db, 'trees', treeId, 'news', id), { [`reactions.${me.uid}`]: on ? myName() || 1 : deleteField() });
+
+// ======================= Chat (BA-chat.md): Cả họ, 2 người, nhóm =======================
+export const allRoomId = (t) => 'all_' + t;
+export function dmRoom(t, other) { const m = [me.uid, other].sort(); return { id: `dm_${t}_${m[0]}_${m[1]}`, members: m }; }
+const roomRef = (r) => doc(db, 'chats', r);
+const msgsCol = (r) => collection(db, 'chats', r, 'msgs');
+/** Người có tài khoản trong gia phả (để chọn nhắn tin / tạo nhóm) – bỏ người xem nhờ chia sẻ */
+export async function chatPeople(t) {
+  const s = await getDocs(collection(db, 'trees', t, 'members'));
+  return s.docs.map((d) => ({ uid: d.id, ...d.data() })).filter((x) => !x.shared && x.role !== 'viewer');
+}
+async function ensureRoom(id, data) {
+  try { const s = await getDoc(roomRef(id)); if (s.exists()) return; } catch (e) { /* chưa có → tạo */ }
+  try { await setDoc(roomRef(id), { ...data, createdBy: me.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); } catch (e) { /* máy khác vừa tạo */ }
+}
+export const ensureAllRoom = (t) => ensureRoom(allRoomId(t), { tree: t, type: 'all', name: 'Cả họ' });
+export async function openDm(t, other) { const r = dmRoom(t, other); await ensureRoom(r.id, { tree: t, type: 'dm', members: r.members }); return r.id; }
+export async function createGroup(t, name, uids) {
+  const ref = doc(collection(db, 'chats'));
+  await setDoc(ref, { tree: t, type: 'group', name, members: [...new Set([me.uid, ...uids])], createdBy: me.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  return ref.id;
+}
+/** Theo dõi danh sách phòng của tôi trong gia phả: phòng Cả họ + phòng có tôi.
+ *  Phải lọc theo gia phả (tree ==) để luật bảo mật chứng minh được tôi thuộc gia phả đó – cần chỉ mục ghép tree + members */
+export function watchRooms(t, cb) {
+  const rooms = new Map(), emit = () => cb([...rooms.values()].filter((x) => x.tree === t));
+  const u1 = onSnapshot(roomRef(allRoomId(t)), (s) => { if (s.exists()) rooms.set(s.id, { id: s.id, ...s.data({ serverTimestamps: 'estimate' }) }); emit(); }, () => {});
+  const u2 = onSnapshot(query(collection(db, 'chats'), where('tree', '==', t), where('members', 'array-contains', me.uid)), (s) => {
+    for (const d of s.docChanges()) { if (d.type === 'removed') rooms.delete(d.doc.id); else rooms.set(d.doc.id, { id: d.doc.id, ...d.doc.data({ serverTimestamps: 'estimate' }) }); }
+    emit();
+  }, (e) => console.warn('chat rooms', e));
+  return () => { u1(); u2(); };
+}
+export function watchMsgs(room, n, cb) {
+  return onSnapshot(query(msgsCol(room), orderBy('at', 'desc'), limit(n)), (s) => cb(s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).reverse()), (e) => cb(null, e));
+}
+export async function olderMsgs(room, before, n = 30) {
+  const s = await getDocs(query(msgsCol(room), orderBy('at', 'desc'), where('at', '<', before), limit(n)));
+  return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).reverse();
+}
+export async function sendMsg(room, { text = '', img, replyTo, mentions }) {
+  const ref = doc(msgsCol(room)), b = writeBatch(db);
+  b.set(ref, clean({ by: me.uid, byName: myName(), at: serverTimestamp(), text, img, replyTo, mentions: mentions && mentions.length ? mentions : undefined }));
+  b.update(roomRef(room), { last: { text: img ? '📷 Ảnh' + (text ? ' · ' + text.slice(0, 80) : '') : text.slice(0, 120), by: me.uid, byName: myName(), at: serverTimestamp() }, updatedAt: serverTimestamp(), [`reads.${me.uid}`]: Date.now() });
+  await b.commit();
+  notifyChat(room, ref.id).catch((e) => console.warn('notify chat', e));
+  return ref.id;
+}
+async function notifyChat(room, msg) {
+  if (!workerUrl || isEmu) return;
+  await fetch(workerUrl.replace(/\/$/, '') + '/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await me.getIdToken()) }, body: JSON.stringify({ room, msg }) });
+}
+export const markRead = (room) => updateDoc(roomRef(room), { [`reads.${me.uid}`]: Date.now() });
+export const setMute = (room, on) => updateDoc(roomRef(room), { [`muted.${me.uid}`]: on ? true : deleteField() });
+export const reactMsg = (room, id, emo) => updateDoc(doc(msgsCol(room), id), { [`reactions.${me.uid}`]: emo || deleteField() });
+export const recallMsg = (room, id) => updateDoc(doc(msgsCol(room), id), { deleted: true, text: '', img: deleteField() });
+export const updateGroup = (room, data) => updateDoc(roomRef(room), { ...data, updatedAt: serverTimestamp() });
+export const myUid = () => (me && me.uid) || '';
 
 // ======================= Hộp thông báo: đã đọc / chưa đọc (lưu trên server – đổi máy vẫn giữ) =======================
 export async function getInboxRead(treeId) {
@@ -627,7 +688,7 @@ export async function pushStatus() {
   const sub = reg && (await reg.pushManager.getSubscription());
   let saved = null;
   if (sub) { try { const s = await getDoc(doc(db, 'pushSubs', await subId(sub.endpoint))); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* chưa có */ } }
-  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn', 'duyet'], news: !(saved && saved.noNews) };
+  return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn', 'duyet'], news: !(saved && saved.noNews), chat: !(saved && saved.noChat) };
 }
 /** Đổi khóa VAPID → máy đã bật thông báo tự đăng ký lại với khóa mới, giữ nguyên lựa chọn (không phải bật lại) */
 export async function ensurePushKey() {
@@ -643,16 +704,16 @@ export async function ensurePushKey() {
   if (!saved) return;   // máy này chưa từng bật cho tài khoản này
   const nsub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) });
   await setDoc(doc(db, 'pushSubs', await subId(nsub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(nsub)), days: saved.days || [0, 3], kinds: saved.kinds || ['gio', 'sn', 'duyet'],
-    ...(saved.noNews ? { noNews: true } : {}), ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
+    ...(saved.noNews ? { noNews: true } : {}), ...(saved.noChat ? { noChat: true } : {}), ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
 }
-export async function enablePush({ days, kinds, news = true }) {
+export async function enablePush({ days, kinds, news = true, chat = true }) {
   if (!pushSupported()) throw new Error('Trình duyệt này chưa hỗ trợ thông báo đẩy.');
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('Bạn chưa cho phép thông báo. Hãy bật lại quyền Thông báo cho trang này trong cài đặt trình duyệt.');
   const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('sw.js'));
   await navigator.serviceWorker.ready;
   const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) }));
-  await setDoc(doc(db, 'pushSubs', await subId(sub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(sub)), days, kinds, noNews: !news,
+  await setDoc(doc(db, 'pushSubs', await subId(sub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(sub)), days, kinds, noNews: !news, noChat: !chat,
     ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
 }
 export async function disablePush() {

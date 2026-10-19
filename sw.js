@@ -1,8 +1,8 @@
 // Service worker: lưu sẵn giao diện để mở app tức thì / khi mất mạng.
 // Dữ liệu gia phả do Firestore tự lưu đệm (IndexedDB), không đi qua đây.
-const V = 'gp-1792401459618';
+const V = 'gp-1792403032023';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
-  'js/app.js', 'js/ui.js', 'js/data.js', 'js/tree.js', 'js/kin.js', 'js/lunar.js', 'js/firebase-config.js'];
+  'js/app.js', 'js/ui.js', 'js/data.js', 'js/tree.js', 'js/kin.js', 'js/chat.js', 'js/lunar.js', 'js/firebase-config.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
@@ -25,13 +25,22 @@ self.addEventListener('fetch', (e) => {
 });
 
 // ---------- Thông báo đẩy: giỗ, sinh nhật (gửi từ repo gia-pha-cron lúc 7h sáng) ----------
+// phòng chat đang mở trên app (app báo qua postMessage) → tin nhắn của phòng đó không hiện thông báo khi app đang mở trước mặt
+let CHAT_OPEN = null;
+self.addEventListener('message', (e) => { if (e.data && 'chatOpen' in e.data) CHAT_OPEN = e.data.chatOpen; });
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = { title: 'Gia phả', body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'Gia phả', {
-    body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || 'gia-pha-nhac', renotify: true,
-    data: { url: d.url || './?tab=gio' },
-  }));
+  e.waitUntil((async () => {
+    if (d.room && CHAT_OPEN === d.room) {
+      const ws = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (ws.some((w) => w.visibilityState === 'visible')) return;
+    }
+    await self.registration.showNotification(d.title || 'Gia phả', {
+      body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || 'gia-pha-nhac', renotify: true,
+      data: { url: d.url || './?tab=gio' },
+    });
+  })());
 });
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();

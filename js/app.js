@@ -1,11 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792401459619';
-import * as D from './data.js?v=1792401459619';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792401459619';
-import { makeKin, DIALECTS } from './kin.js?v=1792401459619';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792401459619';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792403032024';
+import * as D from './data.js?v=1792403032024';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792403032024';
+import { makeKin, DIALECTS } from './kin.js?v=1792403032024';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792403032024';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792403032024';
 
-const APP_VER = '19/10 16:17';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 16:43';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -115,7 +116,8 @@ const pname = (p) => (p && p.name) || 'Chưa rõ tên';
   if (sh) { store('pendingShare', sh); u.searchParams.delete('share'); }
   const tb = u.searchParams.get('tab'); if (tb) { store('tab', tb); u.searchParams.delete('tab'); }
   const nw = u.searchParams.get('news'); if (nw) { store('openNews', nw); u.searchParams.delete('news'); }   // bấm thông báo tin → mở thẳng tin
-  if (c || sh || tb || nw) history.replaceState(null, '', u); }
+  const ch = u.searchParams.get('chat'); if (ch) { store('openChat', ch); u.searchParams.delete('chat'); }   // bấm thông báo tin nhắn → mở thẳng phòng
+  if (c || sh || tb || nw || ch) history.replaceState(null, '', u); }
 applyTheme(store('theme') === 'dark' ? 'dark' : 'light');
 initSheet();
 initPickers();   // mọi ô chọn (select) mở danh sách dạng popup trượt lên
@@ -133,6 +135,7 @@ if (COLLECT_CODE) renderCollect(COLLECT_CODE);
 else D.onUser(async (u, err) => {
   if (S.resetPending) { if (!$('spf')) renderSetPassword(RESET); return; }
   if (!u) {
+    stopChat();
     D.stopPersons(); S.tree = null; $('app').hidden = true; $('gate').hidden = false; closeSheet(true);
     renderLogin(err ? D.errMsg(err) : '');
     return;
@@ -452,6 +455,9 @@ async function openTree(id, first) {
     if (sheetOpen() && S.sel && S.openPerson === S.sel && !S.formOpen) showPerson(S.sel, true);
   });
   loadLinks();
+  // chat: người trong họ (không phải người xem nhờ chia sẻ)
+  initChat({ tree: S.tree, canChat: canPost(), get A() { return S.A; }, byId, pname, kinOf, label: (pid) => (S.A ? S.A.label(pid) : ''), showPerson, isOwner: isOwner() });
+  { const oc = store('openChat'); if (oc) { store('openChat', null); setTimeout(() => chatOpenRoom(oc), 600); } }
   if (canEditAll()) Promise.all([D.listProposals(id), D.listCollectSubs(id).catch(() => [])]).then(([l, c]) => { S.propCount = l.length + c.length; setBadge(); if (S.tab === 'home') renderTab(); }).catch(() => {});
 }
 
@@ -615,7 +621,11 @@ function showNews(x) {
   };
   if ($('nDel')) $('nDel').onclick = async () => {
     if (!await ask({ title: 'Gỡ tin?', msg: `Gỡ tin <b>${esc(x.title)}</b>? Mọi người sẽ không thấy tin này nữa.${x.type === 'tang' ? '<br><small>Hồ sơ người mất <b>không</b> tự đổi lại – nếu báo nhầm hãy sửa hồ sơ.</small>' : ''}`, ok: 'Gỡ tin', danger: true })) return;
-    try { await D.updateNews(S.tree.id, x.id, { status: 'removed' }); S.news = null; closeSheet(true); toast('Đã gỡ tin'); if (S.tab === 'news') renderNews($('main')); else newsBlock(); }
+    try {
+      await D.updateNews(S.tree.id, x.id, { status: 'removed' }); S.news = null; closeSheet(true); toast('Đã gỡ tin');
+      if (S.tab === 'news') renderNews($('main')); else if (S.tab === 'home') newsBlock();
+      refreshBell();   // hộp thông báo + số trên chuông (đang ở tab Thông báo thì vẽ lại luôn)
+    }
     catch (e) { toast(D.errMsg(e), 4000); }
   };
 }
@@ -673,7 +683,9 @@ async function newsForm(type, p) {
     if (!news.title) return toast('Nhập tiêu đề');
     if (!await ask({ title: `Đăng ${T.n.toLowerCase()}?`, msg: `<b>${esc(news.title)}</b><br>Mọi người trong họ sẽ thấy tin này${D.notifyReady() ? ' và nhận thông báo trên điện thoại' : ''}.${death ? '<br>Hồ sơ sẽ được ghi <b>đã mất</b> ngày ' + esc(death.deathSolar) + '.' : ''}`, ok: 'Đăng tin' })) return;
     busy('Đang đăng…');
-    try { await D.postNews(S.tree.id, news, death); busy(); S.news = null; closeSheet(true); toast('Đã đăng tin'); if (S.tab === 'news') renderNews($('main')); else if (S.tab === 'home') newsBlock(); refreshBell(); }
+    try {
+      const res = await D.postNews(S.tree.id, news, death), pu = res.push || {}; busy(); S.news = null; closeSheet(true);
+      toast(pu.error ? `Đã đăng tin · chưa gửi được thông báo: ${pu.error}` : pu.sent != null ? `Đã đăng tin · đã báo tới ${pu.sent} máy${pu.devices ? '' : ' (chưa ai bật thông báo)'}` : 'Đã đăng tin', 5000); if (S.tab === 'news') renderNews($('main')); else if (S.tab === 'home') newsBlock(); refreshBell(); }
     catch (er) { busy(); toast(D.errMsg(er), 5000); }
   };
 }
@@ -713,6 +725,8 @@ async function refreshBell() {
   if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
   if (S.tab === 'inbox' && $('ibList')) renderInbox($('main'), true);
 }
+// tin bị gỡ trên máy khác: khi quay lại app thì tải lại tin (hộp thông báo, chuông, Tổng quan)
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.tree && S.news && Date.now() - S.news.at > 30000) { S.news = null; refreshBell(); if (S.tab === 'home') newsBlock(); } });
 async function renderInbox(m, quiet) {
   if (!quiet) m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
   const items = await inboxItems();
@@ -955,6 +969,7 @@ function showPerson(id, refresh) {
     </div>
     <div class="sacts"><button class="abtn ${canPost() ? '' : 'full'}" data-a="locate"><i class="fa-solid fa-location-crosshairs"></i>Xem trên cây</button>
       ${canPost() ? '<button class="abtn" data-a="event"><i class="fa-solid fa-calendar-plus"></i>Sự kiện</button>' : ''}
+      ${chatUidOf(id) ? `<button class="abtn blue full" data-a="chat"><i class="fa-solid fa-comment-dots"></i>Nhắn tin ${esc((chatUidOf(id).name || '').split(' ').slice(-1)[0])}</button>` : ''}
       ${D.isRoot() && S.tree && !(D.myTrees().find((t) => t.id === S.tree.id) || {}).shared
         ? (myMe() === id ? '<button class="abtn full" data-a="unclaim"><i class="fa-solid fa-user-xmark"></i>Bỏ gắn tài khoản với người này</button>'
           : `<button class="abtn full" data-a="claim"><i class="fa-solid fa-user-check"></i>Đây là tôi${myMe() ? ' (chuyển sang người này)' : ''}</button>`)
@@ -1045,6 +1060,7 @@ async function personAction(p, a) {
   if (a === 'unclaim') return claimMe(p, true);
   if (a === 'chiefnext') return pickChiefNext(p);
   if (a === 'event') return personEvent(p);
+  if (a === 'chat') { const u = chatUidOf(p.id); if (u) { closeSheet(true); chatWith(u.uid); } return; }
   if (a === 'chiefundo') return undoChiefPick(p);
   if (a === 'edit') return personForm(p, { mode: 'edit' });
   if (a === 'child') return personForm(null, { mode: 'child', of: p });
@@ -1688,14 +1704,15 @@ async function pushSettings() {
         <div class="ckcol">${PUSH_DAYS.map(([v, l]) => `<label class="ck"><input type="checkbox" name="pd" value="${v}" ${days.includes(v) ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
       <div class="cfgrow" style="align-items:flex-start"><div><b>Loại</b></div>
         <div class="ckcol"><label class="ck"><input type="checkbox" name="pk" value="gio" ${kinds.includes('gio') ? 'checked' : ''}>Ngày giỗ</label><label class="ck"><input type="checkbox" name="pk" value="sn" ${kinds.includes('sn') ? 'checked' : ''}>Sinh nhật</label><label class="ck"><input type="checkbox" name="pk" value="duyet" ${kinds.includes('duyet') ? 'checked' : ''}>Thông tin chờ duyệt <small style="color:var(--muted)">(biên tập, quản trị)</small></label>
-          <label class="ck"><input type="checkbox" id="pkNews" ${st.news !== false ? 'checked' : ''}>Tin dòng họ <small style="color:var(--muted)">(báo tang, báo hỷ, thông báo – gửi ngay)</small></label></div></div>
+          <label class="ck"><input type="checkbox" id="pkNews" ${st.news !== false ? 'checked' : ''}>Tin dòng họ <small style="color:var(--muted)">(báo tang, báo hỷ, thông báo – gửi ngay)</small></label>
+          <label class="ck"><input type="checkbox" id="pkChat" ${st.chat !== false ? 'checked' : ''}>Tin nhắn <small style="color:var(--muted)">(vẫn báo khi có người @nhắc tên bạn)</small></label></div></div>
     </div>
     <div class="sacts"><button class="abtn blue" id="pushSave"><i class="fa-solid fa-check"></i>Lưu</button><button class="abtn" id="pushTest" ${st.supported && !iosNotInstalled ? '' : 'disabled'}><i class="fa-solid fa-bell"></i>Gửi thử</button></div>
     <p class="note">Mỗi máy (điện thoại, máy tính) bật riêng. Đổi tài khoản trên cùng máy thì thông báo theo tài khoản bật gần nhất.</p>`;
-  const read = () => ({ days: [...$('sheet').querySelectorAll('input[name=pd]:checked')].map((x) => Number(x.value)), kinds: [...$('sheet').querySelectorAll('input[name=pk]:checked')].map((x) => x.value), news: $('pkNews').checked });
+  const read = () => ({ days: [...$('sheet').querySelectorAll('input[name=pd]:checked')].map((x) => Number(x.value)), kinds: [...$('sheet').querySelectorAll('input[name=pk]:checked')].map((x) => x.value), news: $('pkNews').checked, chat: $('pkChat').checked });
   $('pushSave').onclick = async () => {
     const v = read(), on = $('pushOn').checked;
-    if (on && !v.kinds.length && !v.news) return toast('Chọn ít nhất 1 loại thông báo');
+    if (on && !v.kinds.length && !v.news && !v.chat) return toast('Chọn ít nhất 1 loại thông báo');
     busy('Đang lưu…');
     try { if (on) await D.enablePush(v); else await D.disablePush(); busy(); toast(on ? 'Đã bật thông báo – mỗi sáng 7h' : 'Đã tắt thông báo'); closeSheet(true); }
     catch (e) { busy(); toast(D.errMsg(e), 6000); }
