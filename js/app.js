@@ -1,11 +1,11 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792398814668';
-import * as D from './data.js?v=1792398814668';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792398814668';
-import { makeKin, DIALECTS } from './kin.js?v=1792398814668';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792398814668';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792399284728';
+import * as D from './data.js?v=1792399284728';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792399284728';
+import { makeKin, DIALECTS } from './kin.js?v=1792399284728';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792399284728';
 
-const APP_VER = '19/10 15:33';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 15:41';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -523,7 +523,7 @@ function renderTreeTab(fromData) {
       <div class="tsearch"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="tq" placeholder="Tìm người trên cây…" autocomplete="off"><button class="clr" id="tqx" hidden><i class="fa-solid fa-xmark"></i></button></div><div class="panel sres" id="tres" hidden></div></div>
       <div class="blegend" id="blegend"></div>
       <div class="tools"><button class="ibtn" id="zin" title="Phóng to"><i class="fa-solid fa-plus"></i></button><button class="ibtn" id="zout" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
-      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zme" title="Về tôi" hidden><i class="fa-solid fa-location-crosshairs"></i></button><button class="ibtn" id="zkin" title="Cách gọi với tôi (bật / tắt)" hidden><i class="fa-solid fa-people-arrows"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zchief" title="Dòng trưởng họ (bật / tắt)"><i class="fa-solid fa-crown"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEditAll() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
+      <button class="ibtn" id="zfit" title="Xem toàn bộ"><i class="fa-solid fa-expand"></i></button><button class="ibtn" id="zme" title="Về tôi" hidden><i class="fa-solid fa-location-crosshairs"></i></button><button class="ibtn chiefgo" id="zhead" title="Tới trưởng họ" hidden><i class="fa-solid fa-crown"></i><i class="fa-solid fa-location-crosshairs sub"></i></button><button class="ibtn" id="zkin" title="Cách gọi với tôi (bật / tắt)" hidden><i class="fa-solid fa-people-arrows"></i></button><button class="ibtn" id="zgen" title="Hiển thị đến đời…"><i class="fa-solid fa-layer-group"></i></button><button class="ibtn" id="zchief" title="Dòng trưởng họ (bật / tắt)"><i class="fa-solid fa-crown"></i></button><button class="ibtn" id="zcol" title="Màu theo nhánh (bật / tắt)"><i class="fa-solid fa-palette"></i></button>${canEditAll() ? '<button class="ibtn" id="zadd" title="Thêm người (chưa nối)"><i class="fa-solid fa-user-plus"></i></button>' : ''}</div></div>`;
     S.pz = panZoom($('tbox'), $('tsvg'), {
       onTap: (id) => { S.sel = id; drawTree(); showPerson(id); },
       onEdit: (id) => { const p = byId(id); if (canEditP(p)) { S.sel = id; personForm(p, { mode: 'edit' }); } },
@@ -533,6 +533,7 @@ function renderTreeTab(fromData) {
     $('zcol').onclick = () => { store('branchColor', store('branchColor') === false); drawTree(); toast(store('branchColor') === false ? 'Đã tắt màu theo nhánh' : 'Đã bật màu theo nhánh'); };
     $('zgen').onclick = () => showToGen();
     $('zme').onclick = () => { const me = myMe(); if (me) jumpTo(me, false); };
+    $('zhead').onclick = () => { const h = S.A && [...S.A.chiefNow][0]; if (h) { jumpTo(h, false); toast(`Trưởng họ: ${pname(byId(h))} · ${S.A.label(h)}`, 3000); } };
     $('zkin').onclick = () => { store('kinOn', kinOn() ? false : null); drawTree(); toast(kinOn() ? 'Hiện cách gọi với bạn trên cây' : 'Đã tắt cách gọi trên cây'); };
     $('zin').onclick = () => S.pz.zoom(1.25); $('zout').onclick = () => S.pz.zoom(0.8); $('zfit').onclick = () => S.pz.fit();
     if ($('zadd')) $('zadd').onclick = () => personForm(null, { mode: 'first' });
@@ -616,6 +617,7 @@ function drawTree() {
   const me = myMe();
   renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []), colorOn, me && kinOn() ? kinOf : null, me, canEditP);
   if ($('zchief')) { $('zchief').classList.toggle('on', store('chiefOn') !== false); $('zchief').hidden = !(S.A.chief && S.A.chief.size); }
+  if ($('zhead')) $('zhead').hidden = !(S.A.chiefNow && S.A.chiefNow.size);
   if ($('zme')) { $('zme').hidden = !me; $('zkin').hidden = !me; $('zkin').classList.toggle('on', kinOn()); }
   // chú thích màu nhánh: bấm để tới gốc nhánh
   const lg = $('blegend');
