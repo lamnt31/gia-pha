@@ -1,7 +1,7 @@
 // Chat trong dòng họ (BA-chat.md): nút nổi kéo thả được → danh sách cuộc trò chuyện → khung chat.
 // Phòng: Cả họ (mọi tài khoản), 2 người, nhóm tự tạo. Điện thoại: toàn màn hình; máy tính: cửa sổ nhỏ góc dưới phải.
-import * as D from './data.js?v=1792403032024';
-import { $, esc, toast, ask, pick, store } from './ui.js?v=1792403032024';
+import * as D from './data.js?v=1792404101182';
+import { $, esc, toast, ask, pick, store } from './ui.js?v=1792404101182';
 
 let X = null;   // { ctx, tree, rooms, people, unRooms, room, unMsgs, msgs, n, reply, mentions, view }
 const EMO = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -112,7 +112,8 @@ function renderList() {
     <div class="cbs"><i class="fa-solid fa-magnifying-glass"></i><input id="cbQ" placeholder="Tìm cuộc trò chuyện…" autocomplete="off"></div>
     <div class="cbl" id="cbL">${rooms.map((r) => {
       const un = r.last && r.last.by !== me && ms(r.last.at) > ((r.reads || {})[me] || 0), mute = (r.muted || {})[me];
-      const last = r.last ? `${r.type !== 'dm' && r.last.by !== me ? esc((r.last.byName || '').split(' ').slice(-1)[0]) + ': ' : r.last.by === me ? 'Bạn: ' : ''}${esc(r.last.text || '')}` : '<i>Chưa có tin nhắn</i>';
+      const tagMe = un && ((r.last.mention || []).includes(me) || (r.last.mention || []).includes('*'));
+      const last = (tagMe ? '<b class="tagme">@ Có người nhắc bạn</b> ' : '') + (r.last ? `${r.type !== 'dm' && r.last.by !== me ? esc((r.last.byName || '').split(' ').slice(-1)[0]) + ': ' : r.last.by === me ? 'Bạn: ' : ''}${esc(r.last.text || '')}` : '<i>Chưa có tin nhắn</i>');
       const sub = r.type === 'dm' ? kinTxt((r.members || []).find((u) => u !== me)) : '';
       return `<div class="cbr ${un ? 'un' : ''}" data-r="${esc(r.id)}">${roomAv(r)}<div class="t"><b>${esc(roomTitle(r))}${sub ? ` <small>· ${esc(sub)}</small>` : ''}${mute ? ' <i class="fa-solid fa-bell-slash" style="opacity:.5"></i>' : ''}</b><span>${last}</span></div>
         <div class="m"><small>${esc(shortTime((r.last || {}).at))}</small>${un && !mute ? '<i class="dot"></i>' : ''}</div></div>`;
@@ -166,6 +167,7 @@ function openRoom(id) {
     <div class="cbm" id="cbM"><div class="cbe"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
     <div class="cbrep" id="cbRep" hidden></div><div class="cbmen" id="cbMen" hidden></div>
     <form class="cbc" id="cbC"><label class="cbi" title="Gửi ảnh"><i class="fa-regular fa-image"></i><input type="file" accept="image/*" id="cbImg" hidden></label>
+      ${(roomOf(id) || {}).type !== 'dm' ? '<button type="button" class="cbi at" id="cbAt" title="Nhắc tên (@)">@</button>' : ''}
       <textarea id="cbT" rows="1" placeholder="Nhập tin nhắn…" maxlength="2000"></textarea><button class="cbi send" id="cbSend" title="Gửi"><i class="fa-solid fa-paper-plane"></i></button></form>`;
   header();
   swRoom(id);
@@ -173,6 +175,11 @@ function openRoom(id) {
   const t = $('cbT');
   t.oninput = () => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; mention(); };
   t.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer:coarse)').matches) { e.preventDefault(); $('cbC').requestSubmit(); } };
+  if ($('cbAt')) $('cbAt').onclick = () => {   // nút @: chèn @ tại con trỏ → hiện danh sách người để nhắc
+    const p = t.selectionStart ?? t.value.length, pre = t.value.slice(0, p);
+    const ins = (pre && !/\s$/.test(pre) ? ' ' : '') + '@';
+    t.value = pre + ins + t.value.slice(p); t.focus(); t.selectionStart = t.selectionEnd = p + ins.length; mention();
+  };
   $('cbC').onsubmit = async (e) => { e.preventDefault(); const text = t.value.trim(); if (!text) return; t.value = ''; t.oninput(); await send({ text }); };
   $('cbImg').onchange = async () => {
     const f = $('cbImg').files[0]; $('cbImg').value = ''; if (!f) return;
@@ -210,8 +217,11 @@ function drawMsgs(stick) {
     const head = dl !== day ? `<div class="cbday"><span>${dl}</span></div>` : ''; day = dl;
     const cont = prev && prev.by === x.by && !head && ms(x.at) - ms(prev.at) < 5 * 60e3; prev = x;
     const reacts = Object.values(x.reactions || {}); const rc = {}; reacts.forEach((e) => (rc[e] = (rc[e] || 0) + 1));
-    const txt = esc(x.text || '').replace(/@([^\s@]+(?: [^\s@]+){0,3})/g, (s) => `<b class="men">${s}</b>`).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-    return `${head}<div class="cbmsg ${mine ? 'me' : ''} ${cont ? 'cont' : ''}" data-m="${esc(x.id)}">
+    // tô đúng tên được nhắc (theo danh sách mentions của tin), không đoán theo số chữ
+    let txt = esc(x.text || '').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    for (const u of x.mentions || []) { const nm = esc('@' + (u === '*' ? 'Tất cả' : nameOf(u))); txt = txt.split(nm).join(`<b class="men">${nm}</b>`); }
+    const tagMe = !mine && (x.mentions || []).some((u) => u === me || u === '*');
+    return `${head}<div class="cbmsg ${mine ? 'me' : ''} ${cont ? 'cont' : ''} ${tagMe ? 'tagme' : ''}" data-m="${esc(x.id)}">
       ${!mine ? `<div class="cbav">${cont ? '' : av(x.by, 28)}</div>` : ''}
       <div class="cbb">${!mine && !cont && r.type !== 'dm' ? `<div class="cbn">${esc(x.byName || nameOf(x.by))}${kinTxt(x.by) ? ` · ${esc(kinTxt(x.by))}` : ''}</div>` : ''}
         ${x.deleted ? '<i class="cbdel">Tin nhắn đã thu hồi</i>' : `${x.replyTo ? `<div class="cbq"><b>${esc(x.replyTo.byName || '')}</b>${esc(x.replyTo.text || '')}</div>` : ''}${x.img ? `<img class="cbimg" src="${esc(x.img)}" alt="Ảnh">` : ''}${txt ? `<div class="cbtx">${txt}</div>` : ''}`}
@@ -263,17 +273,21 @@ function mention() {
   if (!r || r.type === 'dm') return;
   const m = t.value.slice(0, t.selectionStart).match(/@([^\s@]*)$/);
   if (!m) { box2.hidden = true; return; }
-  const q = m[1].toLowerCase(), uids = (r.type === 'all' ? [...X.people.keys()] : r.members || []).filter((u) => u !== D.myUid());
-  const hit = uids.filter((u) => nameOf(u).toLowerCase().includes(q)).slice(0, 6);
-  box2.hidden = !hit.length;
-  box2.innerHTML = hit.map((u) => `<button type="button" data-mu="${esc(u)}">${av(u, 24)} ${esc(nameOf(u))}${kinTxt(u) ? ` <small>· ${esc(kinTxt(u))}</small>` : ''}</button>`).join('');
+  // gõ @ (chưa gõ chữ) → hiện cả danh sách như Zalo; gõ tiếp → lọc theo tên (không dấu cũng được)
+  const fold = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+  const q = fold(m[1]), uids = (r.type === 'all' ? [...X.people.keys()] : r.members || []).filter((u) => u !== D.myUid());
+  const hit = uids.filter((u) => fold(nameOf(u) + ' ' + kinTxt(u)).includes(q)).slice(0, 50);
+  const allOpt = !q || fold('tat ca moi nguoi all').includes(q);
+  box2.hidden = !hit.length && !allOpt;
+  box2.innerHTML = (allOpt ? `<button type="button" data-mu="*"><span class="cav grp all" style="width:24px;height:24px"><i class="fa-solid fa-at"></i></span> <b>Tất cả</b> <small>· báo cho mọi người trong ${r.type === 'all' ? 'họ' : 'nhóm'}</small></button>` : '')
+    + hit.map((u) => `<button type="button" data-mu="${esc(u)}">${av(u, 24)} ${esc(nameOf(u))}${kinTxt(u) ? ` <small>· ${esc(kinTxt(u))}</small>` : ''}</button>`).join('');
   box2.querySelectorAll('[data-mu]').forEach((b) => (b.onclick = () => {
-    const u = b.dataset.mu, pos = t.selectionStart, before = t.value.slice(0, pos).replace(/@([^\s@]*)$/, '@' + nameOf(u) + ' ');
+    const u = b.dataset.mu, nm = u === '*' ? 'Tất cả' : nameOf(u), pos = t.selectionStart, before = t.value.slice(0, pos).replace(/@([^\s@]*)$/, '@' + nm + ' ');
     t.value = before + t.value.slice(pos); X.mentions.add(u); box2.hidden = true; t.focus(); t.selectionStart = t.selectionEnd = before.length;
   }));
 }
 async function send({ text, img }) {
-  const id = X.room, replyTo = X.reply || undefined, mentions = [...X.mentions].filter((u) => text.includes('@' + nameOf(u)));
+  const id = X.room, replyTo = X.reply || undefined, mentions = [...X.mentions].filter((u) => text.includes('@' + (u === '*' ? 'Tất cả' : nameOf(u))));
   X.reply = null; X.mentions = new Set(); showReply();
   try { await D.sendMsg(id, { text, img, replyTo, mentions }); }
   catch (e) { toast(D.errMsg(e), 4000); }

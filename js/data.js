@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792403032024';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792404101182';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -542,7 +542,7 @@ export async function olderMsgs(room, before, n = 30) {
 export async function sendMsg(room, { text = '', img, replyTo, mentions }) {
   const ref = doc(msgsCol(room)), b = writeBatch(db);
   b.set(ref, clean({ by: me.uid, byName: myName(), at: serverTimestamp(), text, img, replyTo, mentions: mentions && mentions.length ? mentions : undefined }));
-  b.update(roomRef(room), { last: { text: img ? '📷 Ảnh' + (text ? ' · ' + text.slice(0, 80) : '') : text.slice(0, 120), by: me.uid, byName: myName(), at: serverTimestamp() }, updatedAt: serverTimestamp(), [`reads.${me.uid}`]: Date.now() });
+  b.update(roomRef(room), { last: { text: img ? '📷 Ảnh' + (text ? ' · ' + text.slice(0, 80) : '') : text.slice(0, 120), by: me.uid, byName: myName(), at: serverTimestamp(), mention: mentions || [] }, updatedAt: serverTimestamp(), [`reads.${me.uid}`]: Date.now() });
   await b.commit();
   notifyChat(room, ref.id).catch((e) => console.warn('notify chat', e));
   return ref.id;

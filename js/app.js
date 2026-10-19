@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792403032024';
-import * as D from './data.js?v=1792403032024';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792403032024';
-import { makeKin, DIALECTS } from './kin.js?v=1792403032024';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792403032024';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792403032024';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792404101182';
+import * as D from './data.js?v=1792404101182';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792404101182';
+import { makeKin, DIALECTS } from './kin.js?v=1792404101182';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792404101182';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792404101182';
 
-const APP_VER = '19/10 16:43';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '19/10 17:01';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -359,7 +359,7 @@ const NAV = [
   { k: 'tree', ic: 'fa-sitemap', n: 'Cây', ok: () => !!S.tree },
   { k: 'list', ic: 'fa-list', n: 'Danh sách', ok: () => !!S.tree },
   { k: 'gio', ic: 'fa-calendar-days', n: 'Lịch', ok: () => !!S.tree },
-  { k: 'inbox', ic: 'fa-bell', n: 'Thông báo', ok: () => !!S.tree, g: 'Gia phả' },
+  { k: 'inbox', ic: 'fa-bell', n: 'Thông báo', ok: () => !!S.tree, g: 'Gia phả', hide: true },   // mở bằng chuông trên thanh đầu – không hiện trong menu
   { k: 'news', ic: 'fa-newspaper', n: 'Tin dòng họ', ok: () => !!S.tree, g: 'Gia phả' },
   { k: 'props', ic: 'fa-clipboard-check', n: 'Duyệt thông tin', ok: () => !!S.tree && (canEdit() || isLiner()), g: 'Gia phả' },
   { k: 'log', ic: 'fa-clock-rotate-left', n: 'Nhật ký', ok: () => !!S.tree && S.role !== 'viewer', g: 'Gia phả' },
@@ -380,7 +380,7 @@ function shell() {
       <button class="ibtn" id="themeBtn"></button>
     </div>
     <nav class="nav mob">${mobile.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn', badge: 1 }, 'ntab')}</nav>
-    <nav class="nav desk"><div class="rlogo"><i class="fa-solid fa-sitemap"></i></div>${ok.map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn' }, 'ntab')}</nav>
+    <nav class="nav desk"><div class="rlogo"><i class="fa-solid fa-sitemap"></i></div>${ok.filter((x) => !x.hide).map((x) => tab(x, 'ntab')).join('')}${tab({ k: 'more', ic: 'fa-bars', n: 'Nhiều hơn' }, 'ntab')}</nav>
     <main id="main"></main>`;
   applyTheme(document.documentElement.dataset.theme);
   $('themeBtn').onclick = toggleTheme;
@@ -2045,7 +2045,7 @@ const MORE_INFO = {
 };
 function renderMore(m) {
   const a = D.account, groups = {};
-  for (const x of navOk().slice(4)) (groups[x.g || 'Gia phả'] ||= []).push({ go: x.k, ic: x.ic, n: x.n, d: (MORE_INFO[x.k] || [])[0], c: (MORE_INFO[x.k] || [])[1], badge: x.k === 'props' });
+  for (const x of navOk().slice(4).filter((y) => !y.hide)) (groups[x.g || 'Gia phả'] ||= []).push({ go: x.k, ic: x.ic, n: x.n, d: (MORE_INFO[x.k] || [])[0], c: (MORE_INFO[x.k] || [])[1], badge: x.k === 'props' });
   if (D.isRoot()) (groups['Quản trị'] ||= []).push({ act: 'clan', ic: 'fa-landmark', n: 'Thông tin dòng họ', d: 'Tên, người liên hệ, mã dòng họ', c: '#b45309' });
   groups['Tài khoản'] = [
     { act: 'me', ic: 'fa-id-card', n: 'Thông tin tài khoản', d: 'Họ tên, số điện thoại', c: '#0070f4' },
