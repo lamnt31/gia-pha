@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792477896603';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792478198844';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -431,6 +431,13 @@ export async function addProposal(treeId, { personId, personName, text, kind, da
   const ref = doc(collection(db, 'trees', treeId, 'proposals'));
   await setDoc(ref, { by: me.uid, byName: myName(), at: serverTimestamp(), personId: personId || '', personName: personName || '', text, status: 'open',
     ...(kind === 'claim' ? { kind, byUser: account.username } : {}), ...(kind === 'edit' && data ? { kind, data } : {}) });
+  notifyReview(treeId, 'prop', ref.id).catch((e) => console.warn('notify review', e));   // báo ngay người có quyền duyệt
+}
+/** Báo trạm gửi thông báo: có đề xuất / thông tin nhờ nhập hộ cần duyệt */
+async function notifyReview(tree, kind, id) {
+  const u = me || auth.currentUser;   // người nhờ nhập hộ đăng nhập ẩn danh
+  if (!workerUrl || isEmu || !u) return;
+  await fetch(workerUrl.replace(/\/$/, '') + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await u.getIdToken()) }, body: JSON.stringify({ tree, kind, id }) });
 }
 /** Quản trị gắn tài khoản (uid) với 1 người trong gia phả (personId rỗng = bỏ gắn) */
 export async function setUserPerson(uid, treeId, personId) {
@@ -790,7 +797,10 @@ export async function submitCollect(link, { key, person, personName, all, from, 
   if (!person) { data.alive = all.alive; data.gender = all.gender; }
   const ref = doc(db, 'collectSubs', `${link.code}_${auth.currentUser.uid}_${key}`);
   if (existed) await updateDoc(ref, { data, from, phone, at: serverTimestamp() });
-  else await setDoc(ref, { code: link.code, uid: auth.currentUser.uid, tree: link.tree, person, key, personName, ...(rel ? { rel } : {}), data, from, phone, status: 'open', at: serverTimestamp() });
+  else {
+    await setDoc(ref, { code: link.code, uid: auth.currentUser.uid, tree: link.tree, person, key, personName, ...(rel ? { rel } : {}), data, from, phone, status: 'open', at: serverTimestamp() });
+    notifyReview(link.tree, 'collect', ref.id).catch((e) => console.warn('notify review', e));   // lần gửi đầu: báo ngay người duyệt
+  }
 }
 export const newKey = () => 'new' + Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, '').padEnd(8, '0');
 /** Làm mới danh sách vợ/chồng, con đã có (snaps.*.fam) trên các link nhờ điền còn hạn, được thêm người mới.
