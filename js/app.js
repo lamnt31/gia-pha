@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792479341600';
-import * as D from './data.js?v=1792479341600';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792479341600';
-import { makeKin, DIALECTS } from './kin.js?v=1792479341600';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792479341600';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792479341600';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792479927703';
+import * as D from './data.js?v=1792479927703';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792479927703';
+import { makeKin, DIALECTS } from './kin.js?v=1792479927703';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792479927703';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792479927703';
 
-const APP_VER = '20/10 13:55';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 14:05';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -769,19 +769,22 @@ function askPush() {
 }
 // ---------- tự cập nhật bản mới: app mở sẵn trên điện thoại không tự lấy bản mới → mỗi khi quay lại app (tối đa 5 phút / lần) so mã phiên bản ----------
 let VER_AT = 0;
-async function checkUpdate() {
-  if (APP_VER === 'dev' || Date.now() - VER_AT < 5 * 60e3) return;
+const verText = () => (APP_VER === 'dev' ? 'thử nghiệm' : APP_VER);   // ngày giờ đưa lên, vd "20/10 14:35"
+/** Có bản mới → tự tải lại (hoặc nút "Cập nhật ngay" nếu đang nhập dở). Trả về true nếu có bản mới */
+async function checkUpdate(force) {
+  if (APP_VER === 'dev' || (!force && Date.now() - VER_AT < 5 * 60e3)) return false;
   VER_AT = Date.now();
   try {
     const html = await (await fetch('./?ver=' + Date.now(), { cache: 'no-store' })).text();
     const live = (html.match(/js\/app\.js\?([^"']+)/) || [])[1], mine = ((document.querySelector('script[src*="js/app.js"]') || {}).src || '').split('?')[1];
-    if (!live || !mine || live === mine) return;
+    if (!live || !mine || live === mine) return false;
     // đang nhập dở (form / chat) → hỏi; không thì tải lại ngay
     const busyNow = S.formOpen || (sheetOpen() && document.querySelector('#sheet form')) || (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName));
-    if (!busyNow) return location.reload();
+    if (!busyNow || force) { location.reload(); return true; }
     if (!$('updBar')) document.body.insertAdjacentHTML('beforeend', '<div id="updBar" class="updbar"><span><i class="fa-solid fa-rotate"></i> Đã có bản mới</span><button class="abtn sm blue" id="updGo">Cập nhật ngay</button></div>');
     $('updGo').onclick = () => location.reload();
-  } catch (e) { /* mất mạng */ }
+    return true;
+  } catch (e) { return false; }   // mất mạng
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkUpdate(); if (D.me) D.ensurePushKey().catch(() => {}); } });
 setTimeout(checkUpdate, 30000);
@@ -1059,6 +1062,7 @@ function showPerson(id, refresh) {
       <p class="note full" style="margin:2px 0 0"><i class="fa-solid fa-code-branch"></i> Bạn sửa được người này vì thuộc nhánh của bạn.</p>
     </div>` : S.role === 'viewer' ? '' : `<div class="sacts"><button class="abtn blue full" data-a="propose"><i class="fa-solid fa-paper-plane"></i>Đề xuất sửa thông tin</button></div>`}
     ${linksBlock(p)}
+    ${S.role !== 'viewer' ? '<div class="sacts"><button class="abtn full" data-a="history"><i class="fa-solid fa-clock-rotate-left"></i>Lịch sử thay đổi (thêm, sửa, đề xuất…)</button></div>' : ''}
     <p style="font-size:var(--fs-sm);color:var(--muted);margin-top:14px;text-align:center">Cập nhật ${esc(ago(p.updatedAt))}</p>`;
   if (refresh) { const sc = $('sheet').scrollTop; $('sheet').innerHTML = `<div class="grab"></div>${html}`; $('sheet').scrollTop = sc; }
   else openSheet(html);
@@ -1122,6 +1126,7 @@ async function personAction(p, a) {
   if (a === 'unclaim') return claimMe(p, true);
   if (a === 'chiefnext') return pickChiefNext(p);
   if (a === 'event') return personEvent(p);
+  if (a === 'history') return personHistory(p);
   if (a === 'chat') { const u = chatUidOf(p.id); if (u) { closeSheet(true); chatWith(u.uid); } return; }
   if (a === 'chiefundo') return undoChiefPick(p);
   if (a === 'edit') return personForm(p, { mode: 'edit' });
@@ -2148,6 +2153,7 @@ function renderMore(m) {
     { act: 'theme', ic: 'fa-sliders', n: 'Giao diện', d: 'Cỡ chữ, sáng / tối, cách gọi theo miền', c: '#db2777' },
     { act: 'scan', ic: 'fa-qrcode', n: 'Quét mã QR', d: 'Nhận chia sẻ, liên kết hồ sơ', c: '#0f766e' },
     { install: 1, ic: 'fa-download', n: 'Cài ứng dụng', d: 'Mở nhanh từ màn hình chính', c: '#4f46e5' },
+    { act: 'ver', ic: 'fa-code-branch', n: `Phiên bản ${verText()}`, d: 'Tự cập nhật khi có bản mới · bấm để kiểm tra ngay', c: '#64748b' },
   ];
   const row = (x) => `<button class="mrow" ${x.go ? `data-go="${x.go}"` : x.install ? `data-install ${canInstall() ? '' : 'hidden'}` : `data-act="${x.act}"`}>
       <i class="fa-solid ${x.ic}" style="--ic:${x.c || '#0070f4'}"></i><span class="mt"><b>${esc(x.n)}</b>${x.d ? `<small>${esc(x.d)}</small>` : ''}</span>
@@ -2175,6 +2181,7 @@ function renderMore(m) {
   m.querySelector('[data-act=push]').onclick = pushSettings;
   m.querySelector('[data-act=pw]').onclick = changePw;
   m.querySelector('[data-act=theme]').onclick = uiSettings;
+  m.querySelector('[data-act=ver]').onclick = async () => { busy('Đang kiểm tra…'); const has = await checkUpdate(true); busy(); if (!has) toast(`Bạn đang dùng bản mới nhất (${verText()})`, 3500); };
   bindInstall(m);
   if (m.querySelector('[data-act=clan]')) m.querySelector('[data-act=clan]').onclick = editClan;
   $('mOut').onclick = async () => { if (await ask({ title: 'Đăng xuất?', ok: 'Đăng xuất' })) D.logout(); };
@@ -2485,26 +2492,58 @@ async function renderProps(m) {
 const LABEL = { name: 'Họ tên', nick: 'Tên thường gọi', alias: 'Tên húy', gender: 'Giới tính', branch: 'Chi', order: 'Con thứ', adopted: 'Con nuôi', birthSolar: 'Sinh',
   birthLunar: 'Sinh (âm)', alive: 'Còn sống', deathSolar: 'Mất', deathLunar: 'Mất (âm)', birthPlace: 'Nơi sinh', address: 'Nơi ở', phone: 'Điện thoại', email: 'Email', burial: 'An táng', job: 'Nghề nghiệp', note: 'Ghi chú',
   fatherId: 'Cha', motherId: 'Mẹ', spouseIds: 'Vợ/chồng', photo: 'Ảnh', chiefNext: 'Người nối trưởng họ' };
+const logShow = (k, v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (k === 'fatherId' || k === 'motherId' || k === 'chiefNext') return pname(byId(v));
+  if (k === 'spouseIds' && Array.isArray(v)) return v.map((s) => pname(byId(s))).join(', ') || '—';
+  if (k === 'photo') return v ? '(ảnh)' : '—';
+  if (k === 'gender') return v === 'f' ? 'Nữ' : 'Nam';
+  if (typeof v === 'boolean') return v ? 'Có' : 'Không';
+  return String(v).slice(0, 60);
+};
+/** Mô tả 1 dòng nhật ký: thêm / xóa / sửa (mục: cũ → mới) */
+function logDesc(x) {
+  if (x.action === 'add') return 'Thêm vào gia phả';
+  if (x.action === 'share') return 'Chia sẻ gia phả (' + esc(D.shareRoleName((x.after || {}).role)) + ')';
+  if (x.action === 'unshare') return 'Rút chia sẻ gia phả';
+  if (x.action === 'delete') return 'Xóa khỏi gia phả';
+  const keys = Object.keys(x.after || {}).filter((k) => !['updatedBy', 'anc', 'deathNews'].includes(k));
+  return keys.map((k) => `${LABEL[k] || k}: ${esc(logShow(k, (x.before || {})[k]))} → <b>${esc(logShow(k, x.after[k]))}</b>`).join('<br>') || 'Sửa';
+}
+/** Lịch sử của 1 người trong suốt vòng đời: thêm, sửa (cũ → mới), đề xuất (duyệt / từ chối + lý do), nhờ nhập hộ, báo tang / hỷ */
+async function personHistory(p) {
+  openSheet(`<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Lịch sử: ${esc(pname(p))}</h2><div class="empty" style="padding:24px"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div>`, { fixed: true });
+  let h;
+  try { h = await D.personHistory(S.tree.id, p.id); } catch (e) { $('sheet').querySelector('.empty').textContent = D.errMsg(e); return; }
+  const ms = (t) => (t && t.toMillis ? t.toMillis() : 0);
+  const st = (x) => (x.status === 'open' ? '<span class="when warn">Chờ duyệt</span>' : x.status === 'done' ? `<span class="when ok">Đã duyệt${x.resolvedByName ? ' · ' + esc(x.resolvedByName) : ''}</span>` : `<span class="when bad">Từ chối${x.resolvedByName ? ' · ' + esc(x.resolvedByName) : ''}</span>`);
+  const rows = [
+    ...h.log.map((x) => ({ at: ms(x.at), ic: x.action === 'delete' ? 'fa-trash' : x.action === 'add' ? 'fa-plus' : 'fa-pen', cls: x.action === 'delete' ? 'bad' : x.action === 'add' ? 'ok' : 'info',
+      t: x.action === 'add' ? 'Thêm vào gia phả' : x.action === 'delete' ? 'Xóa khỏi gia phả' : 'Sửa thông tin', d: x.action === 'edit' ? logDesc(x) : '', by: x.byName })),
+    ...h.props.map((x) => ({ at: ms(x.at), ic: x.kind === 'claim' ? 'fa-user-check' : 'fa-file-pen', cls: 'warn',
+      t: x.kind === 'claim' ? 'Xin xác nhận tài khoản ("Đây là tôi")' : `Đề xuất sửa${x.data ? ` ${Object.keys(x.data).length} mục` : ''}`,
+      d: (x.data ? Object.keys(x.data).map((k) => `${LABEL[k] || k}: <b>${esc(logShow(k, x.data[k]))}</b>`).join('<br>') : esc(x.text || ''))
+        + (x.reason ? `<br><i>Lý do từ chối: ${esc(x.reason)}</i>` : '') + `<br>${st(x)}`, by: x.byName })),
+    ...h.collect.map((x) => ({ at: ms(x.at), ic: 'fa-link', cls: 'warn', t: 'Nhờ nhập hộ (qua link)',
+      d: Object.keys(x.data || {}).map((k) => `${LABEL[k] || k}: <b>${esc(logShow(k, x.data[k]))}</b>`).join('<br>') + `<br>${st(x)}`, by: x.from || '(không ghi tên)' })),
+    ...h.news.map((x) => ({ at: ms(x.at), ic: x.type === 'tang' ? 'fa-spa' : x.type === 'hy' ? 'fa-heart' : 'fa-bullhorn', cls: x.type === 'tang' ? '' : 'info',
+      t: x.title + (x.status === 'removed' ? ' (đã gỡ)' : ''), d: '', by: x.byName, news: x })),
+  ].sort((a, b) => b.at - a.at);
+  $('sheet').innerHTML = `<div class="grab"></div><h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">Lịch sử: ${esc(pname(p))}</h2>
+    <p style="margin:0 0 8px;color:var(--muted)">${rows.length} sự kiện · thêm, sửa, đề xuất, nhờ nhập hộ, báo tin – lưu lại để tra cứu về sau</p>
+    <div class="panel hist">${rows.map((r, i) => `<div class="item" style="align-items:flex-start;cursor:${r.news ? 'pointer' : 'default'}" ${r.news ? `data-hn="${i}"` : ''}><div class="ic ${r.cls}"><i class="fa-solid ${r.ic}"></i></div>
+      <div class="t"><b>${esc(r.t)}</b>${r.d ? `<span style="color:var(--text)">${r.d}</span>` : ''}<span>${esc(r.by || '')} · ${r.at ? esc(new Date(r.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })) : ''}</span></div></div>`).join('')
+      || '<div class="empty" style="padding:20px">Chưa có lịch sử (người được nhập trước khi có nhật ký)</div>'}</div>
+    <div class="sacts"><button class="abtn full" id="hBack"><i class="fa-solid fa-arrow-left"></i>Về hồ sơ</button></div>`;
+  $('hBack').onclick = () => showPerson(p.id);
+  $('sheet').querySelectorAll('[data-hn]').forEach((el) => (el.onclick = () => showNews(rows[+el.dataset.hn].news)));
+}
 async function renderLog(m) {
   m.innerHTML = `<div class="page"><div class="empty"><i class="fa-solid fa-circle-notch fa-spin"></i>Đang tải…</div></div>`;
   let list;
   try { list = await D.listLog(S.tree.id); } catch (e) { m.innerHTML = `<div class="page"><div class="empty">${esc(D.errMsg(e))}</div></div>`; return; }
   if (S.tab !== 'log') return;
-  const show = (k, v) => {
-    if (v === null || v === undefined || v === '') return '—';
-    if (k === 'fatherId' || k === 'motherId') return pname(byId(v));
-    if (k === 'gender') return v === 'f' ? 'Nữ' : 'Nam';
-    if (typeof v === 'boolean') return v ? 'Có' : 'Không';
-    return String(v).slice(0, 60);
-  };
-  const desc = (x) => {
-    if (x.action === 'add') return 'Thêm mới';
-    if (x.action === 'share') return 'Chia sẻ gia phả (' + esc(D.shareRoleName((x.after || {}).role)) + ')';
-    if (x.action === 'unshare') return 'Rút chia sẻ gia phả';
-    if (x.action === 'delete') return 'Xóa';
-    const keys = Object.keys(x.after || {}).filter((k) => k !== 'updatedBy');
-    return keys.map((k) => `${LABEL[k] || k}: ${esc(show(k, (x.before || {})[k]))} → <b>${esc(show(k, x.after[k]))}</b>`).join('<br>') || 'Sửa';
-  };
+  const desc = logDesc;
   m.innerHTML = `<div class="page"><div class="sec"><i class="fa-solid fa-clock-rotate-left"></i> 60 thay đổi gần nhất</div>
     <div class="panel">${list.length ? list.map((x) => `<div class="item logi" ${x.personId && byId(x.personId) ? `data-p="${esc(x.personId)}"` : ''} style="align-items:flex-start">
       <div class="ic ${x.action === 'delete' ? 'bad' : x.action === 'add' ? 'ok' : 'info'}"><i class="fa-solid fa-${x.action === 'delete' ? 'trash' : x.action === 'add' ? 'plus' : 'pen'}"></i></div>

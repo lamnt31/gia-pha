@@ -569,6 +569,7 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .updbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 80; display: flex; align-items: center; gap: 12px;
             padding: 8px 10px 8px 16px; border-radius: 99px; background: #111827; color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.3); font-weight: 600; white-space: nowrap; }
   @media (min-width: 900px) { .updbar { bottom: 24px; } }
+  .hist .t span b, .logi .t span b { display: inline; font-weight: 700; }   /* "Mục: cũ → mới" trên 1 dòng */
   .qacts { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }   /* nút nhanh ở đầu form sửa */
   .cbc .cbi.at { font-size: 19px; font-weight: 800; }
   .cbmsg.tagme .cbtx { background: #fef3c7; border-color: #f59e0b; color: #422006; }   /* tin có nhắc tên mình */
@@ -591,6 +592,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792479341600"></script>
+<script type="module" src="js/app.js?v=1792479927703"></script>
 </body>
 </html>

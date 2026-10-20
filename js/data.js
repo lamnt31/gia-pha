@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792479341600';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792479927703';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -473,6 +473,18 @@ export async function myResolvedProposals(treeId) {
     const s = await getDocs(query(collection(db, 'trees', treeId, 'proposals'), where('by', '==', me.uid)));
     return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).filter((x) => x.status !== 'open' && x.resolvedAt && Date.now() - x.resolvedAt.toMillis() < 30 * 864e5);
   } catch (e) { return []; }
+}
+
+/** Lịch sử 1 người: nhật ký sửa, đề xuất, nhờ nhập hộ (người duyệt mới xem được), tin báo tang / hỷ */
+export async function personHistory(treeId, pid) {
+  const safe = (p) => p.then((s) => s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))).catch(() => []);
+  const [log, props, collect, news] = await Promise.all([
+    safe(getDocs(query(collection(db, 'trees', treeId, 'log'), where('personId', '==', pid)))),
+    safe(getDocs(query(collection(db, 'trees', treeId, 'proposals'), where('personId', '==', pid)))),
+    safe(getDocs(query(collection(db, 'collectSubs'), where('tree', '==', treeId), where('person', '==', pid)))),
+    safe(getDocs(query(collection(db, 'trees', treeId, 'news'), where('personIds', 'array-contains', pid)))),
+  ]);
+  return { log, props, collect, news };
 }
 
 // ======================= Nhật ký =======================
