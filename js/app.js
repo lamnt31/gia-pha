@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792479927703';
-import * as D from './data.js?v=1792479927703';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792479927703';
-import { makeKin, DIALECTS } from './kin.js?v=1792479927703';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792479927703';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792479927703';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792482917500';
+import * as D from './data.js?v=1792482917500';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792482917500';
+import { makeKin, DIALECTS } from './kin.js?v=1792482917500';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792482917500';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792482917500';
 
-const APP_VER = '20/10 14:05';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 14:55';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };

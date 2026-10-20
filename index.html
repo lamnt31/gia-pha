@@ -44,6 +44,7 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { overflow-x: hidden; }
+  body { overflow-x: clip; }   /* lưới an toàn: phần tử nào lỡ rộng hơn màn hình cũng không làm cả trang kéo ngang được (điện thoại bỏ qua overflow của html) */
   html, body { margin: 0; min-height: 100%; color: var(--text); background: var(--bg);
     font: var(--font-size)/1.5 "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   body::before { content: ""; position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
@@ -320,8 +321,10 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .rbadge { display: inline-flex; align-items: center; gap: 5px; margin: 6px 6px 0 0; font-size: var(--fs-sm); font-weight: 600; padding: 2px 10px; border-radius: 99px;
             background: color-mix(in srgb, #0070f4 12%, transparent); color: #0070f4; }
   .rbadge.me { background: color-mix(in srgb, #059669 12%, transparent); color: #059669; }
-  .mcols { display: grid; grid-template-columns: 1fr; gap: 0 18px; align-items: start; }
-  @media (min-width: 900px) { .mcols { grid-template-columns: 1fr 1fr; } }
+  /* minmax(0, 1fr): cột được co nhỏ hơn chữ dài (không thì chữ mô tả không xuống dòng đẩy rộng cả trang → kéo ngang được) */
+  .mcols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 18px; align-items: start; }
+  .mcols > section { min-width: 0; }
+  @media (min-width: 900px) { .mcols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   .msec { margin: 20px 4px 8px; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   .mcols > section:last-child { margin-top: 20px; }
   .mlist { border-radius: 18px; background: var(--card-solid); border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
@@ -592,6 +595,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792479927703"></script>
+<script type="module" src="js/app.js?v=1792482917500"></script>
 </body>
 </html>
