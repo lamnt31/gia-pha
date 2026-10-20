@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792482917500';
-import * as D from './data.js?v=1792482917500';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792482917500';
-import { makeKin, DIALECTS } from './kin.js?v=1792482917500';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792482917500';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792482917500';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792483616314';
+import * as D from './data.js?v=1792483616314';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792483616314';
+import { makeKin, DIALECTS } from './kin.js?v=1792483616314';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792483616314';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792483616314';
 
-const APP_VER = '20/10 14:55';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 15:06';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -371,7 +371,7 @@ const navOk = () => NAV.filter((x) => x.ok());
 function shell() {
   const ok = navOk(), mobile = [ok[0], ...ok.slice(1, 4)], tr = D.myTrees();
   if (S.tab !== 'more' && !ok.some((x) => x.k === S.tab)) S.tab = 'home';
-  const tab = (x, cls) => `<button class="${cls} ${S.tab === x.k ? 'on' : ''}" data-tab="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span>${x.k === 'props' || x.badge ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}</button>`;
+  const tab = (x, cls) => `<button class="${cls} ${S.tab === x.k ? 'on' : ''}" data-tab="${x.k}"><i class="fa-solid ${x.ic}"></i><span>${x.n}</span>${x.k === 'props' || x.badge ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${badgeNum(S.propCount)}</b>` : ''}</button>`;
   $('app').innerHTML = `
     <div class="top">
       <button class="tsw" id="treeSw"><b>${esc(S.tree ? S.tree.name : D.clan.name || 'Gia phả')}</b>
@@ -400,7 +400,9 @@ function go(k) {
   window.scrollTo(0, 0);
   renderTab();
 }
-function setBadge() { document.querySelectorAll('[data-badge]').forEach((b) => { b.textContent = S.propCount; b.hidden = !S.propCount; }); refreshBell(); }
+/** Số trên huy hiệu tròn: > 9 → "9+" để vòng tròn luôn 1 cỡ */
+const badgeNum = (n) => (n > 9 ? '9+' : String(n));
+function setBadge() { document.querySelectorAll('[data-badge]').forEach((b) => { b.textContent = badgeNum(S.propCount); b.hidden = !S.propCount; }); refreshBell(); }
 
 async function switchTree() {
   const tr = D.myTrees();
@@ -747,7 +749,7 @@ async function refreshBell() {
   const its = await inboxItems(), pend = its.find((x) => x.sticky) ? S.propCount : 0;
   const n = its.filter((x) => x.unread && !x.sticky).length + pend;
   if (!$('bellN')) return;
-  $('bellN').textContent = n > 99 ? '99+' : n; $('bellN').hidden = !n;
+  $('bellN').textContent = badgeNum(n); $('bellN').hidden = !n;
   if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
   if (S.tab === 'inbox' && $('ibList')) renderInbox($('main'), true);
 }
@@ -2157,7 +2159,7 @@ function renderMore(m) {
   ];
   const row = (x) => `<button class="mrow" ${x.go ? `data-go="${x.go}"` : x.install ? `data-install ${canInstall() ? '' : 'hidden'}` : `data-act="${x.act}"`}>
       <i class="fa-solid ${x.ic}" style="--ic:${x.c || '#0070f4'}"></i><span class="mt"><b>${esc(x.n)}</b>${x.d ? `<small>${esc(x.d)}</small>` : ''}</span>
-      ${x.badge ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${S.propCount}</b>` : ''}<i class="fa-solid fa-chevron-right mchev"></i></button>`;
+      ${x.badge ? `<b class="badge" data-badge ${S.propCount ? '' : 'hidden'}>${badgeNum(S.propCount)}</b>` : ''}<i class="fa-solid fa-chevron-right mchev"></i></button>`;
   const role = D.isRoot() ? 'Quản trị dòng họ' : a.title || (S.tree ? ROLE[S.role] : 'Người dùng');
   const meP = myMe() && byId(myMe());
   m.innerHTML = `<div class="morehead"></div>

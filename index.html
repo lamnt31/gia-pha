@@ -262,8 +262,10 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .top .ibtn { width: 36px; height: 36px; font-size: var(--fs-lg); background: rgba(255,255,255,.14); border: 0; color: #fff; }
   /* chuông thông báo: số chưa đọc đỏ ở góc */
   .top .ibtn.bell { position: relative; }
-  .bellN { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #ef4444; color: #fff;
-           font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; border: 2px solid var(--hdr, #0070f4); box-sizing: content-box; }
+  /* huy hiệu số: TRÒN, luôn 1 cỡ (số > 9 hiện "9+") */
+  .bellN, .cfabn, .ntab .badge, .mrow .badge { width: 18px; height: 18px; min-width: 0; padding: 0; border-radius: 50%; display: grid; place-items: center;
+           background: #ef4444; color: #fff; font-size: 10px; font-weight: 800; line-height: 1; letter-spacing: -.3px; text-align: center; box-sizing: content-box; font-style: normal; }
+  .bellN { position: absolute; top: -5px; right: -5px; border: 2px solid var(--hdr, #0070f4); }
   /* tin dòng họ + hộp thông báo */
   .nic { flex: 0 0 auto; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; color: #fff; font-size: 16px; background: #64748b; }
   .tang .nic, .nic.tang { background: #374151; } .hy .nic, .nic.hy { background: #dc2626; } .chung .nic, .nic.chung { background: #0070f4; }
@@ -290,7 +292,7 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .ntab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .ntab.on { color: var(--accent); }
   .ntab.on i { background: var(--ring); padding: 4px 16px; border-radius: 99px; }
-  .ntab .badge { position: absolute; top: 2px; left: calc(50% + 6px); font-size: var(--fs-xs); background: var(--bad); color: #fff; border-radius: 99px; padding: 0 5px; line-height: 16px; }
+  .ntab .badge { position: absolute; top: 2px; left: calc(50% + 6px); border: 2px solid var(--card-solid); }
   .nav.desk { display: none; }
   @media (min-width: 900px) {
     #app { padding-bottom: 0; padding-left: 88px; }
@@ -509,7 +511,7 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
   .cfab.left { right: auto; left: 16px; }
   .cfab.drag { opacity: .85; transform: scale(1.08); transition: none; }
   @media (min-width: 900px) { .cfab { bottom: 24px; right: 24px; } .cfab.left { left: 112px; } }
-  .cfabn { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: #ef4444; color: #fff; font-size: 11px; font-weight: 800; line-height: 20px; border: 2px solid #fff; box-sizing: content-box; }
+  .cfabn { position: absolute; top: -2px; right: -2px; width: 20px; height: 20px; font-size: 11px; border: 2px solid #fff; }
   body.chat-open .cfab { display: none; }
   #main .tbox .tools { bottom: 84px; }   /* chừa chỗ cho nút chat trên tab Cây */
   .cbox { position: fixed; z-index: 60; inset: 0; display: flex; flex-direction: column; background: var(--card-solid); color: var(--text); }
@@ -595,6 +597,6 @@ addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); windo
 <div class="busy" id="busy" hidden><div><i class="fa-solid fa-circle-notch fa-spin"></i><span id="busyTxt"></span></div></div>
 <div class="modal" id="modal" hidden></div>
 <input type="file" id="photoIn" accept="image/*" hidden>
-<script type="module" src="js/app.js?v=1792482917500"></script>
+<script type="module" src="js/app.js?v=1792483616314"></script>
 </body>
 </html>

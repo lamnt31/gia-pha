@@ -1,7 +1,7 @@
 // Chat trong dòng họ (BA-chat.md): nút nổi kéo thả được → danh sách cuộc trò chuyện → khung chat.
 // Phòng: Cả họ (mọi tài khoản), 2 người, nhóm tự tạo. Điện thoại: toàn màn hình; máy tính: cửa sổ nhỏ góc dưới phải.
-import * as D from './data.js?v=1792482917500';
-import { $, esc, toast, ask, pick, store } from './ui.js?v=1792482917500';
+import * as D from './data.js?v=1792483616314';
+import { $, esc, toast, ask, pick, store } from './ui.js?v=1792483616314';
 
 let X = null;   // { ctx, tree, rooms, people, unRooms, room, unMsgs, msgs, n, reply, mentions, view }
 const EMO = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -62,7 +62,7 @@ function badge() {
   if (!X) return;
   const me = D.myUid();
   const n = X.rooms.filter((r) => r.last && r.last.by !== me && ms(r.last.at) > ((r.reads || {})[me] || 0) && !(r.muted || {})[me] && r.id !== (X.view === 'room' && X.room)).length;
-  const el = $('cfabN'); if (el) { el.textContent = n > 99 ? '99+' : n; el.hidden = !n; }
+  const el = $('cfabN'); if (el) { el.textContent = n > 9 ? '9+' : n; el.hidden = !n; }   // huy hiệu tròn 1 cỡ
 }
 
 // ---------- khung chat ----------
