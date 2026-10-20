@@ -1,5 +1,5 @@
 // Vẽ cây gia phả (SVG): xếp theo đời, vợ/chồng đứng cạnh, con dưới cha mẹ; thu gọn nhánh; kéo / phóng to / 2 ngón tay
-import { esc } from './ui.js?v=1792404101182';
+import { esc } from './ui.js?v=1792468604051';
 
 const NW = 156, NH = 66, GAP_SP = 10, GAP_SIB = 26, VGAP = 120;
 
@@ -255,7 +255,7 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
         return `<g class="cpk ${pick ? 'pk' : ''}"><title>${head ? 'Trưởng họ hiện tại (người còn sống đầu tiên của dòng trưởng)' : 'Được chọn nối trưởng họ'}</title><rect x="${NW - wd - 8}" y="-9" width="${wd}" height="17" rx="8.5"/><text x="${NW - 8 - wd / 2}" y="3.5" text-anchor="middle">${t}</text></g>`;
       })()}
       ${p.id === meId ? `<g class="mepin"><title>Đây là bạn</title><circle class="pulse" cx="${NW / 2}" cy="-6" r="13"/><circle cx="${NW / 2}" cy="-6" r="12"/><text x="${NW / 2}" y="-1.5" text-anchor="middle">&#xf3c5;</text></g>` : ''}
-      ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin (hoặc nhấn giữ ô)</title><rect class="hit" x="${NW - 46}" y="${NH - 30}" width="58" height="44" rx="10"/><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
+      ${canEd && canEd(p) ? `<g class="edb" data-edit="${esc(p.id)}"><title>Sửa thông tin</title><rect class="hit" x="${NW - 46}" y="${NH - 30}" width="58" height="44" rx="10"/><circle cx="${NW - 3}" cy="${NH - 3}" r="11"/><text x="${NW - 3}" y="${NH + 1}" text-anchor="middle">&#xf303;</text></g>` : ''}
       ${n.kind === 'blood' && n.kids ? `<g class="tog" data-tog="${esc(p.id)}" transform="translate(${NW / 2},${NH + 2})"><circle r="10"/><text y="4" text-anchor="middle">${n.collapsed ? '+' + n.kids : '−'}</text></g>` : ''}
     </g>`;
   };
@@ -266,7 +266,7 @@ export function renderTree(svg, L, A, selectedId, linked = new Set(), colorBranc
 
 /** Kéo / phóng to / 2 ngón tay cho khung chứa cây. onTap(id) khi chạm 1 người, onToggle(id) khi chạm +/− */
 export function panZoom(box, svg, { onTap, onToggle, onEdit }) {
-  let hold = 0, held = false;   // nhấn giữ 1 ô ~0,55 giây → sửa (điện thoại); bấm icon bút chì → sửa
+  let hold = 0, held = false;   // nhấn giữ 1 ô = click (mở hồ sơ đầy đủ); bấm icon bút chì → form sửa
   const S = { x: 0, y: 0, k: 1 };
   const apply = () => { svg.style.transform = `translate(${S.x}px,${S.y}px) scale(${S.k})`; };
   const pts = new Map();
@@ -280,8 +280,9 @@ export function panZoom(box, svg, { onTap, onToggle, onEdit }) {
     moved = false; held = false; clearTimeout(hold);
     if (pts.size === 1) {
       start = { x: S.x, y: S.y, px: e.clientX, py: e.clientY, target: e.target };
-      const nd = onEdit && e.target.closest && !e.target.closest('[data-tog]') && e.target.closest('[data-id]');
-      if (nd && nd.querySelector('[data-edit]')) hold = setTimeout(() => { if (!moved && pts.size === 1) { held = true; if (navigator.vibrate) navigator.vibrate(15); onEdit(nd.dataset.id); } }, 550);
+      // giữ lâu (iPhone không bắn contextmenu) → mở hồ sơ đầy đủ như click chuột
+      const nd = e.target.closest && !e.target.closest('[data-tog], [data-edit]') && e.target.closest('[data-id]');
+      if (nd) hold = setTimeout(() => { if (!moved && pts.size === 1 && !held) { held = true; onTap(nd.dataset.id); } }, 550);
     } else clearTimeout(hold);
     if (pts.size === 2) { const [a, b] = [...pts.values()]; start = { pinch: Math.hypot(a[0] - b[0], a[1] - b[1]), k: S.k }; }
   });
@@ -298,9 +299,10 @@ export function panZoom(box, svg, { onTap, onToggle, onEdit }) {
       zoomAt(start.k * Math.hypot(a[0] - b[0], a[1] - b[1]) / start.pinch, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top);
     }
   });
-  const up = (e) => {
+  // pointercancel: điện thoại tự huỷ chạm khi nhấn giữ (chuẩn bị menu của trình duyệt) → KHÔNG coi là chạm thường
+  const up = (e, cancel = false) => {
     clearTimeout(hold);
-    const wasTap = pts.size === 1 && !moved && !held && start && start.target;
+    const wasTap = !cancel && pts.size === 1 && !moved && !held && start && start.target;
     pts.delete(e.pointerId);
     if (wasTap) {
       let ed = onEdit && start.target.closest && start.target.closest('[data-edit]');
@@ -316,7 +318,15 @@ export function panZoom(box, svg, { onTap, onToggle, onEdit }) {
     }
     if (!pts.size) start = null;
   };
-  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  box.addEventListener('pointerup', (e) => up(e)); box.addEventListener('pointercancel', (e) => up(e, true));
+  // nhấn giữ trên điện thoại (trình duyệt bắn contextmenu) / chuột phải → mở hồ sơ đầy đủ GIỐNG click chuột; chặn menu của trình duyệt
+  box.addEventListener('contextmenu', (e) => {
+    if (ui(e)) return;
+    e.preventDefault();
+    const nd = e.target.closest && e.target.closest('[data-id]');
+    if (!nd || held) return;
+    clearTimeout(hold); held = true; onTap(nd.dataset.id);
+  });
   box.addEventListener('wheel', (e) => { if (ui(e)) return; e.preventDefault(); const r = box.getBoundingClientRect(); zoomAt(S.k * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   return {
     fit() {

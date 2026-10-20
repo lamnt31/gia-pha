@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792404101182';
-import * as D from './data.js?v=1792404101182';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792404101182';
-import { makeKin, DIALECTS } from './kin.js?v=1792404101182';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792404101182';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792404101182';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792468604051';
+import * as D from './data.js?v=1792468604051';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792468604051';
+import { makeKin, DIALECTS } from './kin.js?v=1792468604051';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792468604051';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792468604051';
 
-const APP_VER = '19/10 17:01';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 10:56';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1216,7 +1216,11 @@ function personForm(p, ctx) {
     const sp = (of.spouseIds || []).map(byId).filter(Boolean);
     otherSel = `<div class="fld full"><label>${of.gender === 'f' ? 'Cha' : 'Mẹ'}</label><select id="f_other"><option value="">— Chưa rõ —</option>${sp.map((s, i) => `<option value="${esc(s.id)}" ${i === 0 ? 'selected' : ''}>${esc(pname(s))}</option>`).join('')}</select></div>`;
   }
-  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}</h2>
+  // form sửa: hàng nút nhanh (thêm con / vợ chồng / cha mẹ, xem hồ sơ) – trên điện thoại nhấn giữ ô là ra form này nên phải thêm người được ngay tại đây
+  const qa = ctx.mode === 'edit' && p ? [['child', 'fa-child', 'Thêm con'], ['spouse', 'fa-ring', `Thêm ${p.gender === 'f' ? 'chồng' : 'vợ'}`],
+    ...(canEditAll() && !(byId(p.fatherId) && byId(p.motherId)) ? [['parent', 'fa-arrow-up', `Thêm ${!byId(p.fatherId) ? 'cha' : 'mẹ'}`]] : []), ['view', 'fa-id-card', 'Xem hồ sơ']] : [];
+  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}${p && ctx.mode === 'edit' ? ` <small style="font-weight:600;color:var(--muted);font-size:var(--fs-base)">${esc(pname(p))}</small>` : ''}</h2>
+    ${qa.length ? `<div class="qacts">${qa.map(([k, ic, n]) => `<button type="button" class="abtn sm" data-qa="${k}"><i class="fa-solid ${ic}"></i>${n}</button>`).join('')}</div>` : ''}
     ${ctx.mode === 'insert' ? '<p style="font-size:var(--fs-base);color:var(--muted);margin:0">Người mới sẽ là con của đời trên và là cha/mẹ của người đang chọn. Số đời phía dưới tự tăng 1.</p>' : ''}
     <form id="pf">
     ${personFieldsHtml(d, otherSel)}
@@ -1229,6 +1233,11 @@ function personForm(p, ctx) {
   sh.querySelectorAll('input,select,textarea').forEach((el) => el.addEventListener('input', () => (dirty = true)));
   bindPersonFields(sh, d, (ph) => { photo = ph; dirty = true; });
   $('fcancel').onclick = () => closeSheet();
+  sh.querySelectorAll('[data-qa]').forEach((b) => (b.onclick = async () => {
+    if (dirty && !await ask({ title: 'Bỏ thay đổi?', msg: 'Thông tin vừa sửa chưa được lưu.', ok: 'Bỏ, tiếp tục', danger: true })) return;
+    dirty = false; S.formOpen = false; closeSheet(true);
+    setTimeout(() => (b.dataset.qa === 'view' ? showPerson(p.id) : personAction(p, b.dataset.qa)), 200);
+  }));
   function confirmLeave() {
     ask({ title: 'Bỏ thay đổi?', msg: 'Thông tin vừa nhập chưa được lưu.', ok: 'Bỏ', danger: true }).then((ok) => { if (ok) { dirty = false; closeSheet(true); back(); } });
   }
