@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792468927926';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792477896603';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -427,10 +427,10 @@ export async function deletePerson(treeId, p, all) {
 }
 
 // ======================= Đề xuất sửa (thành viên chỉ xem) =======================
-export async function addProposal(treeId, { personId, personName, text, kind }) {
+export async function addProposal(treeId, { personId, personName, text, kind, data }) {
   const ref = doc(collection(db, 'trees', treeId, 'proposals'));
   await setDoc(ref, { by: me.uid, byName: myName(), at: serverTimestamp(), personId: personId || '', personName: personName || '', text, status: 'open',
-    ...(kind === 'claim' ? { kind, byUser: account.username } : {}) });
+    ...(kind === 'claim' ? { kind, byUser: account.username } : {}), ...(kind === 'edit' && data ? { kind, data } : {}) });
 }
 /** Quản trị gắn tài khoản (uid) với 1 người trong gia phả (personId rỗng = bỏ gắn) */
 export async function setUserPerson(uid, treeId, personId) {

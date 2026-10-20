@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792468927926';
-import * as D from './data.js?v=1792468927926';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792468927926';
-import { makeKin, DIALECTS } from './kin.js?v=1792468927926';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792468927926';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792468927926';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792477896603';
+import * as D from './data.js?v=1792477896603';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792477896603';
+import { makeKin, DIALECTS } from './kin.js?v=1792477896603';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792477896603';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792477896603';
 
-const APP_VER = '20/10 11:02';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 13:31';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -1209,7 +1209,7 @@ function personForm(p, ctx) {
     const sibs = S.persons.filter((k) => k.fatherId === of.id || k.motherId === of.id);
     d.order = sibs.length + 1;
   }
-  const title = { first: 'Thêm người', edit: 'Sửa thông tin', child: `Thêm con của ${pname(of)}`, spouse: `Thêm ${of && of.gender === 'f' ? 'chồng' : 'vợ'} của ${pname(of)}`,
+  const title = { first: 'Thêm người', edit: 'Sửa thông tin', propose: 'Đề xuất sửa thông tin', child: `Thêm con của ${pname(of)}`, spouse: `Thêm ${of && of.gender === 'f' ? 'chồng' : 'vợ'} của ${pname(of)}`,
     parent: `Thêm ${ctx.as === 'm' ? 'cha' : 'mẹ'} của ${pname(of)}`, insert: `Chèn đời giữa ${pname(of)} và ${pname(byId(of && (of.fatherId || of.motherId)))}` }[ctx.mode];
   // chọn cha/mẹ còn lại khi thêm con
   let otherSel = '';
@@ -1220,12 +1220,15 @@ function personForm(p, ctx) {
   // form sửa: hàng nút nhanh (thêm con / vợ chồng / cha mẹ, xem hồ sơ) – trên điện thoại nhấn giữ ô là ra form này nên phải thêm người được ngay tại đây
   const qa = ctx.mode === 'edit' && p ? [['child', 'fa-child', 'Thêm con'], ['spouse', 'fa-ring', `Thêm ${p.gender === 'f' ? 'chồng' : 'vợ'}`],
     ...(canEditAll() && !(byId(p.fatherId) && byId(p.motherId)) ? [['parent', 'fa-arrow-up', `Thêm ${!byId(p.fatherId) ? 'cha' : 'mẹ'}`]] : []), ['view', 'fa-id-card', 'Xem hồ sơ']] : [];
-  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}${p && ctx.mode === 'edit' ? ` <small style="font-weight:600;color:var(--muted);font-size:var(--fs-base)">${esc(pname(p))}</small>` : ''}</h2>
+  const prop = ctx.mode === 'propose';
+  const html = `<h2 style="margin:0 0 4px;font-size:var(--fs-2xl)">${esc(title)}${p && (ctx.mode === 'edit' || prop) ? ` <small style="font-weight:600;color:var(--muted);font-size:var(--fs-base)">${esc(pname(p))}</small>` : ''}</h2>
     ${qa.length ? `<div class="qacts">${qa.map(([k, ic, n]) => `<button type="button" class="abtn sm" data-qa="${k}"><i class="fa-solid ${ic}"></i>${n}</button>`).join('')}</div>` : ''}
     ${ctx.mode === 'insert' ? '<p style="font-size:var(--fs-base);color:var(--muted);margin:0">Người mới sẽ là con của đời trên và là cha/mẹ của người đang chọn. Số đời phía dưới tự tăng 1.</p>' : ''}
+    ${prop ? '<p style="font-size:var(--fs-base);color:var(--muted);margin:0">Sửa thẳng vào các ô bên dưới. Người có quyền sẽ xem <b>thông tin cũ → mới</b> rồi duyệt.</p>' : ''}
     <form id="pf">
     ${personFieldsHtml(d, otherSel)}
-    <div class="fbar"><button type="button" class="abtn" id="fcancel">Hủy</button><button class="abtn blue"><i class="fa-solid fa-check"></i>Lưu</button></div>
+    ${prop ? '<div class="fgrid"><div class="fld full"><label>Ghi chú cho người duyệt</label><input id="f_pnote" maxlength="500" placeholder="vd: Theo lời bác Hai, ngày giỗ đúng là 12/3 âm lịch"></div></div>' : ''}
+    <div class="fbar"><button type="button" class="abtn" id="fcancel">Hủy</button><button class="abtn blue"><i class="fa-solid ${prop ? 'fa-paper-plane' : 'fa-check'}"></i>${prop ? 'Gửi đề xuất' : 'Lưu'}</button></div>
     </form>`;
   let dirty = false, photo = d.photo || '';
   openSheet(html, { beforeClose: () => (dirty ? (confirmLeave(), false) : true) });
@@ -1249,6 +1252,18 @@ function personForm(p, ctx) {
     const v = (k) => ($('f_' + k) ? $('f_' + k).value.trim() : '');
     const data = readPersonFields(sh, photo);
     if (!data) return;
+    if (prop) {   // đề xuất: chỉ gửi các mục thay đổi
+      const ch = Object.fromEntries(D.COLLECT_FIELDS.filter((k) => data[k] !== undefined && String(data[k] ?? '') !== String(p[k] ?? (DEF[k] ?? ''))).map((k) => [k, data[k]]));
+      const note = v('pnote'), n = Object.keys(ch).length;
+      if (!n && !note) return toast('Bạn chưa sửa mục nào');
+      busy('Đang gửi…');
+      try {
+        await D.addProposal(S.tree.id, { personId: p.id, personName: pname(p), kind: n ? 'edit' : undefined, data: n ? ch : undefined,
+          text: note || `Đề xuất sửa ${n} mục: ${Object.keys(ch).map((k) => LABEL[k] || k).join(', ')}`.slice(0, 2000) });
+        dirty = false; busy(); closeSheet(true); S.formOpen = false; toast('Đã gửi đề xuất – chờ người có quyền duyệt', 4000);
+      } catch (er) { busy(); toast(D.errMsg(er), 4000); }
+      return;
+    }
     // cảnh báo: con sinh trước cha mẹ
     const by = yearOf(data.birthSolar);
     const warn = [];
@@ -1351,12 +1366,8 @@ async function linkForm(p) {
   catch (e) { busy(); toast(D.errMsg(e), 4000); }
 }
 
-async function propose(p) {
-  const v = await ask({ title: 'Đề xuất sửa', msg: `Gửi chủ gia phả / biên tập thông tin cần sửa hoặc bổ sung cho <b>${esc(pname(p))}</b>.`, fields: [{ id: 't', ph: 'Ví dụ: Ông mất ngày 12/3 âm lịch, an táng ở…' }], ok: 'Gửi', validate: (v) => (!v.t ? 'Chưa nhập nội dung' : '') });
-  if (!v) return;
-  try { await D.addProposal(S.tree.id, { personId: p.id, personName: pname(p), text: v.t }); toast('Đã gửi đề xuất'); }
-  catch (e) { toast(D.errMsg(e), 4000); }
-}
+/** Đề xuất sửa: mở form đầy đủ (như form sửa) → gửi các mục thay đổi → người có quyền xem Hiện tại → Mới rồi áp dụng */
+const propose = (p) => personForm(p, { mode: 'propose' });
 
 // ======================= Tab Danh sách =======================
 /** Tiêu chí lọc danh sách. g = nhóm: cùng nhóm "hoặc", khác nhóm "và" */
@@ -2009,7 +2020,8 @@ async function applyCollect(x, keys) {
     } else { add.spouseIds = [of.id]; updates.push({ id: of.id, spouseIds: D.rel.add(nid), _log: false }); }
     await D.saveChanges(S.tree.id, { adds: [add], updates }, S.A.byId);
   }
-  await D.resolveCollect(x.id, 'done', keys);
+  if (x._prop) await D.resolveProposal(S.tree.id, x.id, 'done');   // đề xuất của thành viên
+  else await D.resolveCollect(x.id, 'done', keys);
 }
 /** Popup duyệt: chỉ thông tin cá nhân, cột Hiện tại → Đề xuất mới; mục thay đổi có ô chọn */
 function reviewSheet(x, rerender) {
@@ -2018,7 +2030,8 @@ function reviewSheet(x, rerender) {
   // mục thay đổi lên đầu, sau đó các mục không đổi để đối chiếu
   const rows = [...D.COLLECT_FIELDS.filter((k) => ch.has(k)), ...D.COLLECT_FIELDS.filter((k) => !ch.has(k) && !isNew && k !== 'photo' && cur[k] !== undefined && cur[k] !== '' && cur[k] !== null)];
   openSheet(`<h2 style="margin:0 0 2px;font-size:var(--fs-2xl)">${esc(isNew ? 'Thêm người mới' : 'Duyệt thông tin')}: ${esc(x.personName || 'Chưa rõ tên')}</h2>
-    <p style="margin:0;color:var(--muted)">${isNew ? `${x.rel.kind === 'child' ? 'Con' : 'Vợ/chồng'} của ${esc(of ? pname(of) : '?')} · ` : ''}Từ: <b>${esc(x.from || '(không ghi tên)')}</b>${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</p>
+    <p style="margin:0;color:var(--muted)">${isNew ? `${x.rel.kind === 'child' ? 'Con' : 'Vợ/chồng'} của ${esc(of ? pname(of) : '?')} · ` : ''}${x._prop ? 'Đề xuất của' : 'Từ'}: <b>${esc(x.from || '(không ghi tên)')}</b>${x.phone ? ' · ' + esc(x.phone) : ''} · ${esc(ago(x.at))}</p>
+    ${x._prop && x.note && !/^Đề xuất sửa \d+ mục/.test(x.note) ? `<p style="margin:6px 0 0;padding:8px 10px;border-radius:10px;background:var(--bg)"><i class="fa-regular fa-comment"></i> ${esc(x.note)}</p>` : ''}
     <label class="ck" style="margin-top:8px"><input type="checkbox" id="rvAll" checked>Chọn tất cả mục thay đổi</label>
     <div class="rvtable"><div class="rvh"><span></span><span>Mục</span><span>Hiện tại</span><span>Đề xuất mới</span></div>
       ${rows.map((k) => { const c = ch.has(k); return `<label class="rvr ${c ? 'chg' : ''}"><span>${c ? `<input type="checkbox" data-k="${k}" checked>` : ''}</span><span>${esc(LABEL[k] || k)}</span>
@@ -2035,7 +2048,7 @@ function reviewSheet(x, rerender) {
   };
   $('rvNo').onclick = async () => {
     if (!(await ask({ title: 'Từ chối thông tin này?', msg: 'Thông tin sẽ không được cập nhật vào gia phả.', ok: 'Từ chối', danger: true }))) return;
-    try { await D.resolveCollect(x.id, 'rejected'); closeSheet(true); toast('Đã từ chối'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
+    try { await (x._prop ? D.resolveProposal(S.tree.id, x.id, 'rejected') : D.resolveCollect(x.id, 'rejected')); closeSheet(true); toast('Đã từ chối'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
   };
 }
 function bindCollectCards(m, list, rerender) {
@@ -2372,13 +2385,19 @@ async function renderProps(m) {
     <div class="panel">${list.length ? list.map((x) => `<div class="item" style="align-items:flex-start;cursor:default"><div class="ic info"><i class="fa-solid fa-message"></i></div>
       <div class="t"><b>${esc(x.personName || 'Chung')}</b><span style="white-space:pre-wrap;color:var(--text)">${esc(x.text)}</span><span>${esc(x.byName)} · ${esc(ago(x.at))}</span>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${x.personId && byId(x.personId) ? `<button class="abtn sm" data-open="${esc(x.personId)}"><i class="fa-solid fa-user"></i>Mở hồ sơ</button>` : ''}
-        ${x.kind === 'claim' ? (D.isRoot() ? `<button class="abtn sm blue" data-claim="${esc(x.id)}"><i class="fa-solid fa-user-check"></i>Xác nhận & gắn</button>` : '<span class="note" style="margin:0">Chỉ quản trị dòng họ xác nhận được</span>')
+        ${x.kind === 'edit' && x.data ? `<button class="abtn sm blue" data-pview="${esc(x.id)}"><i class="fa-solid fa-magnifying-glass"></i>Xem cũ → mới &amp; duyệt</button>`
+          : x.kind === 'claim' ? (D.isRoot() ? `<button class="abtn sm blue" data-claim="${esc(x.id)}"><i class="fa-solid fa-user-check"></i>Xác nhận & gắn</button>` : '<span class="note" style="margin:0">Chỉ quản trị dòng họ xác nhận được</span>')
           : `<button class="abtn sm blue" data-ok="${esc(x.id)}"><i class="fa-solid fa-check"></i>Đã sửa</button>`}<button class="abtn sm red" data-no="${esc(x.id)}">Từ chối</button></div></div></div>`).join('')
       : '<div class="empty" style="padding:20px"><i class="fa-regular fa-circle-check"></i>Không có đề xuất nào</div>'}</div></div>`;
   m.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => showPerson(b.dataset.open)));
   bindCollectCards(m, cl, () => renderProps(m));
   const res = (id, st) => D.resolveProposal(S.tree.id, id, st).then(() => { toast('Đã xử lý'); renderProps(m); }).catch((e) => toast(D.errMsg(e), 4000));
   m.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => res(b.dataset.ok, 'done')));
+  // đề xuất sửa bằng form: mở bảng duyệt Hiện tại → Đề xuất mới (dùng chung với nhờ nhập hộ)
+  m.querySelectorAll('[data-pview]').forEach((b) => (b.onclick = () => {
+    const x = list.find((y) => y.id === b.dataset.pview);
+    reviewSheet({ id: x.id, _prop: true, person: x.personId, personName: x.personName, data: x.data, from: x.byName, at: x.at, note: x.text }, () => renderProps(m));
+  }));
   m.querySelectorAll('[data-claim]').forEach((b) => (b.onclick = async () => {
     const x = list.find((y) => y.id === b.dataset.claim), p = byId(x.personId);
     if (!p) return toast('Người này không còn trong gia phả', 4000);
