@@ -1,6 +1,6 @@
 // Service worker: lưu sẵn giao diện để mở app tức thì / khi mất mạng.
 // Dữ liệu gia phả do Firestore tự lưu đệm (IndexedDB), không đi qua đây.
-const V = 'gp-1792478198843';
+const V = 'gp-1792479341600';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/app.js', 'js/ui.js', 'js/data.js', 'js/tree.js', 'js/kin.js', 'js/chat.js', 'js/lunar.js', 'js/firebase-config.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });

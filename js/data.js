@@ -12,7 +12,7 @@ import {
   doc, collection, getDoc, getDocs, getDocsFromCache, onSnapshot, query, where, orderBy, limit,
   writeBatch, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField, Timestamp, updateDoc, setDoc, deleteDoc,
 } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792478198844';
+import { firebaseConfig, recaptchaSiteKey, vapidPublicKey, workerUrl } from './firebase-config.js?v=1792479341600';
 
 // ?emu=1 → chạy với Firebase Emulator trên máy (kiểm thử, không đụng dữ liệu thật)
 export const isEmu = new URLSearchParams(location.search).has('emu') && ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -450,13 +450,30 @@ export async function setUserPerson(uid, treeId, personId) {
 }
 /** Người trong gia phả mà tài khoản đang đăng nhập được gắn với */
 export const myPersonId = (treeId) => ((account && account.me) || {})[treeId] || '';
+/** Theo dõi liên tục các mục chờ duyệt (đề xuất + nhờ nhập hộ) → số trên chuông / Duyệt tự cập nhật. cb(proposals, collectSubs) */
+export function watchPending(treeId, cb) {
+  let a = [], b = [];
+  const u1 = onSnapshot(query(collection(db, 'trees', treeId, 'proposals'), where('status', '==', 'open')), (s) => { a = s.docs.map((d) => ({ id: d.id, ...d.data() })); cb(a, b); }, () => {});
+  const u2 = onSnapshot(query(collection(db, 'collectSubs'), where('tree', '==', treeId), where('status', '==', 'open')), (s) => { b = s.docs.map((d) => ({ id: d.id, ...d.data() })); cb(a, b); }, () => {});
+  return () => { u1(); u2(); };
+}
 export async function listProposals(treeId, onlyOpen = true) {
   const col = collection(db, 'trees', treeId, 'proposals');
   const s = await getDocs(onlyOpen ? query(col, where('status', '==', 'open')) : query(col, orderBy('at', 'desc'), limit(50)));
   return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).sort((a, b) => b.at - a.at);
 }
-export const resolveProposal = (treeId, id, status) =>
-  updateDoc(doc(db, 'trees', treeId, 'proposals', id), { status, resolvedBy: me.uid, resolvedByName: myName(), resolvedAt: serverTimestamp() });
+/** Duyệt / từ chối đề xuất (+ lý do) → báo lại người đề xuất */
+export async function resolveProposal(treeId, id, status, reason = '') {
+  await updateDoc(doc(db, 'trees', treeId, 'proposals', id), { status, resolvedBy: me.uid, resolvedByName: myName(), resolvedAt: serverTimestamp(), ...(reason ? { reason: reason.slice(0, 500) } : {}) });
+  if (workerUrl && !isEmu) fetch(workerUrl.replace(/\/$/, '') + '/resolved', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await me.getIdToken()) }, body: JSON.stringify({ tree: treeId, id }) }).catch(() => {});
+}
+/** Đề xuất của tôi đã có kết quả (30 ngày) – cho hộp thông báo của người đề xuất */
+export async function myResolvedProposals(treeId) {
+  try {
+    const s = await getDocs(query(collection(db, 'trees', treeId, 'proposals'), where('by', '==', me.uid)));
+    return s.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).filter((x) => x.status !== 'open' && x.resolvedAt && Date.now() - x.resolvedAt.toMillis() < 30 * 864e5);
+  } catch (e) { return []; }
+}
 
 // ======================= Nhật ký =======================
 export async function listLog(treeId, n = 60) {
@@ -697,24 +714,36 @@ export async function pushStatus() {
   if (sub) { try { const s = await getDoc(doc(db, 'pushSubs', await subId(sub.endpoint))); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* chưa có */ } }
   return { supported: true, permission: Notification.permission, on: !!saved, days: (saved && saved.days) || [0, 3], kinds: (saved && saved.kinds) || ['gio', 'sn', 'duyet'], news: !(saved && saved.noNews), chat: !(saved && saved.noChat) };
 }
-/** Đổi khóa VAPID → máy đã bật thông báo tự đăng ký lại với khóa mới, giữ nguyên lựa chọn (không phải bật lại) */
+/**
+ * Tự giữ thông báo luôn hoạt động (chạy mỗi lần mở app): tài khoản đã từng bật thông báo (máy nào cũng được) + trình duyệt vẫn cho phép
+ * → bảo đảm máy này có đăng ký đúng khóa hiện tại và có bản ghi pushSubs cho tài khoản này (giữ nguyên lựa chọn cũ).
+ * Không bao giờ tự tắt: chỉ huỷ đăng ký khi khóa cũ không còn dùng được, và đăng ký lại ngay.
+ */
 export async function ensurePushKey() {
   if (!pushSupported() || Notification.permission !== 'granted' || !me) return;
-  const reg = await navigator.serviceWorker.getRegistration(); if (!reg) return;
-  const sub = await reg.pushManager.getSubscription(); if (!sub) return;
-  const cur = sub.options && sub.options.applicationServerKey ? btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
-  if (!cur || cur === vapidPublicKey) return;
-  const oldId = await subId(sub.endpoint);
-  let saved = null; try { const s = await getDoc(doc(db, 'pushSubs', oldId)); if (s.exists() && s.data().uid === me.uid) saved = s.data(); } catch (e) { /* không có */ }
-  await sub.unsubscribe();
-  try { await deleteDoc(doc(db, 'pushSubs', oldId)); } catch (e) { /* của người khác / đã xóa */ }
-  if (!saved) return;   // máy này chưa từng bật cho tài khoản này
-  const nsub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) });
-  await setDoc(doc(db, 'pushSubs', await subId(nsub.endpoint)), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(nsub)), days: saved.days || [0, 3], kinds: saved.kinds || ['gio', 'sn', 'duyet'],
-    ...(saved.noNews ? { noNews: true } : {}), ...(saved.noChat ? { noChat: true } : {}), ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
+  const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('sw.js')); if (!reg) return;
+  await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  // lựa chọn đã lưu của tài khoản: bản ghi của chính máy này, hoặc của máy khác cùng tài khoản
+  let mine = [];
+  try { mine = (await getDocs(query(collection(db, 'pushSubs'), where('uid', '==', me.uid)))).docs.map((d) => ({ id: d.id, ...d.data() })); } catch (e) { return; }
+  const here = sub ? mine.find((x) => x.sub && x.sub.endpoint === sub.endpoint) || null : null;
+  let prefs = here || [...mine].sort((a, b) => ((b.updatedAt && b.updatedAt.toMillis()) || 0) - ((a.updatedAt && a.updatedAt.toMillis()) || 0))[0];
+  // mặc định BẬT: máy đã cho phép thông báo mà tài khoản chưa có lựa chọn → bật tất cả (trừ khi người dùng tự tắt trên máy này)
+  if (!prefs) { if (localStorage.getItem('pushOff') === '1') return; prefs = { days: [0, 3], kinds: ['gio', 'sn', 'duyet'] }; }
+  const keyOf = (s) => (s && s.options && s.options.applicationServerKey ? btoa(String.fromCharCode(...new Uint8Array(s.options.applicationServerKey))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '');
+  let oldId = null;
+  if (sub && keyOf(sub) && keyOf(sub) !== vapidPublicKey) { oldId = await subId(sub.endpoint); await sub.unsubscribe(); sub = null; }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(vapidPublicKey) });
+  const id = await subId(sub.endpoint), cur = mine.find((x) => x.id === id);
+  if (oldId && oldId !== id) { try { await deleteDoc(doc(db, 'pushSubs', oldId)); } catch (e) { /* đã xóa */ } }
+  if (cur && cur.sub && cur.sub.endpoint === sub.endpoint) return;   // đã đúng
+  await setDoc(doc(db, 'pushSubs', id), { uid: me.uid, clan: clan.code, name: myName(), sub: JSON.parse(JSON.stringify(sub)), days: prefs.days || [0, 3], kinds: prefs.kinds || ['gio', 'sn', 'duyet'],
+    ...(prefs.noNews ? { noNews: true } : {}), ...(prefs.noChat ? { noChat: true } : {}), ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
 }
 export async function enablePush({ days, kinds, news = true, chat = true }) {
   if (!pushSupported()) throw new Error('Trình duyệt này chưa hỗ trợ thông báo đẩy.');
+  localStorage.removeItem('pushOff');
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('Bạn chưa cho phép thông báo. Hãy bật lại quyền Thông báo cho trang này trong cài đặt trình duyệt.');
   const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('sw.js'));
@@ -724,6 +753,7 @@ export async function enablePush({ days, kinds, news = true, chat = true }) {
     ua: navigator.userAgent.slice(0, 200), updatedAt: serverTimestamp() });
 }
 export async function disablePush() {
+  localStorage.setItem('pushOff', '1');   // người dùng tự tắt → không tự bật lại trên máy này
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = reg && (await reg.pushManager.getSubscription());
   if (!sub) return;

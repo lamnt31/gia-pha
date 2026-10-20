@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792478198844';
-import * as D from './data.js?v=1792478198844';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792478198844';
-import { makeKin, DIALECTS } from './kin.js?v=1792478198844';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792478198844';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792478198844';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792479341600';
+import * as D from './data.js?v=1792479341600';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792479341600';
+import { makeKin, DIALECTS } from './kin.js?v=1792479341600';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792479341600';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792479341600';
 
-const APP_VER = '20/10 13:36';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 13:55';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -135,7 +135,7 @@ if (COLLECT_CODE) renderCollect(COLLECT_CODE);
 else D.onUser(async (u, err) => {
   if (S.resetPending) { if (!$('spf')) renderSetPassword(RESET); return; }
   if (!u) {
-    stopChat();
+    stopChat(); if (S.unPending) { S.unPending(); S.unPending = null; }
     D.stopPersons(); S.tree = null; $('app').hidden = true; $('gate').hidden = false; closeSheet(true);
     renderLogin(err ? D.errMsg(err) : '');
     return;
@@ -144,7 +144,8 @@ else D.onUser(async (u, err) => {
   { const ps = store('pendingShare'); if (ps) { store('pendingShare', null); setTimeout(() => receiveShare(ps), 900); } }
   rememberAcc({ code: D.clan.code, user: D.account.username, name: D.account.name || '', clan: D.clan.name || '' });
   D.markEmailOk().catch(() => {});   // đã đặt mật khẩu qua email → email đúng
-  D.ensurePushKey().catch((e) => console.warn('push key', e));   // đổi khóa thông báo → tự đăng ký lại
+  D.ensurePushKey().catch((e) => console.warn('push key', e));   // giữ thông báo luôn bật (đổi khóa / máy đã cho phép → tự đăng ký)
+  setTimeout(askPush, 2500);   // chưa từng cho phép → thẻ mời bật thông báo
   const trees = D.myTrees(), last = store('lastTree'), oal = store('openAfterLogin');
   if (oal && oal.clan === D.clan.code) { store('openAfterLogin', null); if (trees.some((t) => t.id === oal.tree)) { S.jumpAfterLoad = oal.person; return openTree(oal.tree, true); } }
   const first = trees.find((t) => t.id === last) || trees[0];
@@ -444,6 +445,7 @@ async function openTree(id, first) {
       renderTab(true);
       if (S.propsWait && S.tab === 'props') { S.propsWait = false; renderProps($('main')); }
       scheduleEventsSync();
+      recountPending();   // quyền nhánh: lọc theo nhánh khi cây đã tải
       clearTimeout(S.bellT); S.bellT = setTimeout(refreshBell, 800);   // số thông báo chưa đọc trên chuông
       if (S.jumpAfterLoad && S.A.byId.has(S.jumpAfterLoad)) { const j = S.jumpAfterLoad; S.jumpAfterLoad = null; go('tree'); setTimeout(() => jumpTo(j), 150); }
       if (store('pendingLink') && list.length && !S.linkBusy) {
@@ -458,9 +460,23 @@ async function openTree(id, first) {
   // chat: người trong họ (không phải người xem nhờ chia sẻ)
   initChat({ tree: S.tree, canChat: canPost(), get A() { return S.A; }, byId, pname, kinOf, label: (pid) => (S.A ? S.A.label(pid) : ''), showPerson, isOwner: isOwner() });
   { const oc = store('openChat'); if (oc) { store('openChat', null); setTimeout(() => chatOpenRoom(oc), 600); } }
-  if (canEditAll()) Promise.all([D.listProposals(id), D.listCollectSubs(id).catch(() => [])]).then(([l, c]) => { S.propCount = l.length + c.length; setBadge(); if (S.tab === 'home') renderTab(); }).catch(() => {});
+  // số chờ duyệt: theo dõi liên tục (đề xuất mới đến là chuông / Nhiều hơn tăng số ngay). Người duyệt: quản trị, biên tập toàn cây, quyền nhánh
+  if (S.unPending) S.unPending();
+  S.pend = null;
+  S.unPending = (canEdit() || D.myPersonId(id)) && S.role !== 'viewer' ? D.watchPending(id, (l, c) => { if (S.tree && S.tree.id === id) { S.pend = [l, c]; recountPending(); } }) : null;
 }
 
+/** Đếm mục chờ duyệt tôi được duyệt (quyền nhánh: chỉ nhánh mình – cần cây đã tải) → chuông, Nhiều hơn, Tổng quan */
+function recountPending() {
+  if (!S.pend) return;
+  let [l, c] = S.pend;
+  if (!canEditAll()) {
+    if (!isLiner()) { l = []; c = []; }
+    else { const L = lineSet(); l = l.filter((x) => x.kind !== 'claim' && L.has(x.personId)); c = c.filter((x) => L.has(x.person || (x.rel && x.rel.of))); }
+  }
+  const n = l.length + c.length;
+  if (n !== S.propCount) { S.propCount = n; setBadge(); if (S.tab === 'home') renderTab(); }
+}
 function renderTab(fromData) {
   const sub = $('tsub'); if (sub && S.tree) sub.textContent = `${ROLE[S.role]} · ${S.persons.length} người`;
   const m = $('main'); if (!m) return;
@@ -709,22 +725,67 @@ async function inboxItems() {
         sub: e.kind === 'gio' ? `${e.g[0]}/${e.g[1]} âm lịch · ${fmtD(e.n.solar)}` : `${fmtD(e.n.solar)} · tròn ${e.n.age} tuổi`, open: () => showPerson(e.p.id) });
     }
   }
+  // chờ duyệt: luôn tính là chưa đọc cho tới khi duyệt xong (không đánh dấu đã đọc được)
   if (S.propCount && (canEdit() || isLiner())) {
-    const d = new Date(); items.push({ key: `props:${d.getFullYear()}${d.getMonth()}${d.getDate()}:${S.propCount}`, at: Date.now(), when: 'hôm nay', ic: 'fa-inbox', cls: 'props',
-      title: `${S.propCount} thông tin chờ duyệt`, sub: 'Từ link nhờ điền và đề xuất của thành viên', open: () => go('props') });
+    items.push({ key: 'props', sticky: true, at: Date.now() + 1, when: 'đang chờ', ic: 'fa-inbox', cls: 'props',
+      title: `${S.propCount} thông tin chờ bạn duyệt`, sub: 'Đề xuất sửa của thành viên, thông tin nhờ nhập hộ – bấm để duyệt', open: () => go('props') });
+  }
+  // đề xuất của tôi đã có kết quả (duyệt / từ chối + lý do)
+  for (const x of await D.myResolvedProposals(t)) {
+    const ok = x.status === 'done';
+    items.push({ key: `kq:${x.id}`, at: x.resolvedAt.toMillis(), when: `${x.resolvedByName || ''} · ${ago(x.resolvedAt)}`, ic: ok ? 'fa-circle-check' : 'fa-circle-xmark', cls: ok ? 'ok' : 'no',
+      title: x.kind === 'claim' ? (ok ? 'Đã xác nhận tài khoản của bạn' : 'Chưa xác nhận tài khoản') : `${ok ? 'Đề xuất đã được duyệt' : 'Đề xuất bị từ chối'}: ${x.personName || ''}`,
+      sub: x.reason ? `Lý do: ${x.reason}` : ok ? 'Thông tin đã cập nhật vào gia phả' : 'Không có lý do', open: () => (byId(x.personId) ? showPerson(x.personId) : null) });
   }
   items.sort((a, b) => b.at - a.at);
-  items.forEach((x) => (x.unread = !S.inRead.read[x.key]));
+  items.forEach((x) => (x.unread = x.sticky || !S.inRead.read[x.key]));
   return items;
 }
 async function refreshBell() {
   const b = $('bellN'); if (!b || !S.tree) return;
-  const n = (await inboxItems()).filter((x) => x.unread).length;
+  // số trên chuông = thông báo chưa đọc + số mục đang chờ mình duyệt
+  const its = await inboxItems(), pend = its.find((x) => x.sticky) ? S.propCount : 0;
+  const n = its.filter((x) => x.unread && !x.sticky).length + pend;
   if (!$('bellN')) return;
   $('bellN').textContent = n > 99 ? '99+' : n; $('bellN').hidden = !n;
   if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
   if (S.tab === 'inbox' && $('ibList')) renderInbox($('main'), true);
 }
+// ---------- mời bật thông báo (mặc định bật): trình duyệt bắt người dùng bấm "Cho phép" 1 lần → thẻ mời nổi bật sau khi đăng nhập ----------
+function askPush() {
+  if (!D.pushSupported() || $('pushAsk') || D.isEmu) return;
+  const perm = Notification.permission;
+  if (perm !== 'default' || localStorage.getItem('pushOff') === '1') return;   // đã cho phép (tự bật) / đã chặn / đã tự tắt
+  if (Date.now() - (+store('pushAskAt') || 0) < 3 * 864e5) return;   // bấm "Để sau" → 3 ngày sau nhắc lại
+  document.body.insertAdjacentHTML('beforeend', `<div id="pushAsk" class="pushask"><i class="fa-solid fa-bell"></i>
+    <div><b>Bật thông báo</b><span>Để không bỏ lỡ báo tang, báo hỷ, ngày giỗ, tin nhắn trong họ</span></div>
+    <button class="abtn sm" id="paLater">Để sau</button><button class="abtn sm blue" id="paOn">Bật</button></div>`);
+  $('paLater').onclick = () => { store('pushAskAt', Date.now()); $('pushAsk').remove(); };
+  $('paOn').onclick = async () => {
+    $('pushAsk').remove();
+    try { await D.enablePush({ days: [0, 3], kinds: ['gio', 'sn', 'duyet'], news: true, chat: true }); toast('Đã bật thông báo trên máy này', 3500); }
+    catch (e) { store('pushAskAt', Date.now()); toast(D.errMsg(e), 6000); }
+  };
+}
+// ---------- tự cập nhật bản mới: app mở sẵn trên điện thoại không tự lấy bản mới → mỗi khi quay lại app (tối đa 5 phút / lần) so mã phiên bản ----------
+let VER_AT = 0;
+async function checkUpdate() {
+  if (APP_VER === 'dev' || Date.now() - VER_AT < 5 * 60e3) return;
+  VER_AT = Date.now();
+  try {
+    const html = await (await fetch('./?ver=' + Date.now(), { cache: 'no-store' })).text();
+    const live = (html.match(/js\/app\.js\?([^"']+)/) || [])[1], mine = ((document.querySelector('script[src*="js/app.js"]') || {}).src || '').split('?')[1];
+    if (!live || !mine || live === mine) return;
+    // đang nhập dở (form / chat) → hỏi; không thì tải lại ngay
+    const busyNow = S.formOpen || (sheetOpen() && document.querySelector('#sheet form')) || (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName));
+    if (!busyNow) return location.reload();
+    if (!$('updBar')) document.body.insertAdjacentHTML('beforeend', '<div id="updBar" class="updbar"><span><i class="fa-solid fa-rotate"></i> Đã có bản mới</span><button class="abtn sm blue" id="updGo">Cập nhật ngay</button></div>');
+    $('updGo').onclick = () => location.reload();
+  } catch (e) { /* mất mạng */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkUpdate(); if (D.me) D.ensurePushKey().catch(() => {}); } });
+setTimeout(checkUpdate, 30000);
+setInterval(() => { if (!document.hidden) checkUpdate(); }, 10 * 60e3);   // app để mở lâu trên màn hình: 10 phút kiểm tra 1 lần
 // tin bị gỡ trên máy khác: khi quay lại app thì tải lại tin (hộp thông báo, chuông, Tổng quan)
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.tree && S.news && Date.now() - S.news.at > 30000) { S.news = null; refreshBell(); if (S.tab === 'home') newsBlock(); } });
 async function renderInbox(m, quiet) {
@@ -735,7 +796,7 @@ async function renderInbox(m, quiet) {
   if (want) { store('openNews', null); const it = items.find((x) => x.key === 'n:' + want); if (it) setTimeout(() => { it.open(); if (it.unread) { S.inRead.read[it.key] = true; D.markInboxRead(S.tree.id, [it.key]).catch(() => {}); refreshBell(); } }, 200); }
   S.ibf = S.ibf || '';
   const shown = items.filter((x) => !S.ibf || (S.ibf === 'unread' ? x.unread : x.cls === S.ibf));
-  const nUn = items.filter((x) => x.unread).length;
+  const nUn = items.filter((x) => x.unread && !x.sticky).length;
   m.innerHTML = `<div class="page">
     <div class="listbar"><div class="filters">${[['', 'Tất cả'], ['unread', `Chưa đọc${nUn ? ' (' + nUn + ')' : ''}`], ['tang', 'Báo tang'], ['hy', 'Báo hỷ'], ['gio', 'Giỗ'], ['sn', 'Sinh nhật'], ['chung', 'Thông báo']]
       .map(([k, n]) => `<button class="chip ${S.ibf === k ? 'on' : ''}" data-ibf="${k}">${n}</button>`).join('')}</div>
@@ -749,7 +810,7 @@ async function renderInbox(m, quiet) {
     const x = shown[+el.dataset.ib]; x.open();
     if (x.unread) { S.inRead.read[x.key] = true; D.markInboxRead(S.tree.id, [x.key]).catch(() => {}); refreshBell(); }
   }));
-  if ($('ibAll')) $('ibAll').onclick = async () => { const ks = items.filter((x) => x.unread).map((x) => x.key); ks.forEach((k) => (S.inRead.read[k] = true)); await D.markInboxRead(S.tree.id, ks).catch(() => {}); refreshBell(); renderInbox(m, true); };
+  if ($('ibAll')) $('ibAll').onclick = async () => { const ks = items.filter((x) => x.unread && !x.sticky).map((x) => x.key); ks.forEach((k) => (S.inRead.read[k] = true)); await D.markInboxRead(S.tree.id, ks).catch(() => {}); refreshBell(); renderInbox(m, true); };
   $('ibSet').onclick = pushSettings;
 }
 /** Nút "Sự kiện" ở hồ sơ người → chọn loại tin */
@@ -2047,9 +2108,17 @@ function reviewSheet(x, rerender) {
     catch (e) { busy(); toast(D.errMsg(e), 4000); }
   };
   $('rvNo').onclick = async () => {
-    if (!(await ask({ title: 'Từ chối thông tin này?', msg: 'Thông tin sẽ không được cập nhật vào gia phả.', ok: 'Từ chối', danger: true }))) return;
-    try { await (x._prop ? D.resolveProposal(S.tree.id, x.id, 'rejected') : D.resolveCollect(x.id, 'rejected')); closeSheet(true); toast('Đã từ chối'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
+    // đề xuất của thành viên: hỏi lý do (người đề xuất nhận thông báo kèm lý do); nhờ nhập hộ (không có tài khoản): chỉ xác nhận
+    const r = x._prop ? await askReject() : (await ask({ title: 'Từ chối thông tin này?', msg: 'Thông tin sẽ không được cập nhật vào gia phả.', ok: 'Từ chối', danger: true })) && { reason: '' };
+    if (!r) return;
+    try { await (x._prop ? D.resolveProposal(S.tree.id, x.id, 'rejected', r.reason) : D.resolveCollect(x.id, 'rejected')); closeSheet(true); toast(x._prop ? 'Đã từ chối · đã báo người đề xuất' : 'Đã từ chối'); rerender(); } catch (e) { toast(D.errMsg(e), 4000); }
   };
+}
+/** Hỏi lý do từ chối (không bắt buộc) – người đề xuất sẽ thấy trong thông báo. Trả về { reason } hoặc null (huỷ) */
+async function askReject() {
+  const v = await ask({ title: 'Từ chối đề xuất?', msg: 'Thông tin sẽ không được cập nhật vào gia phả. Người đề xuất sẽ nhận thông báo kèm lý do.',
+    fields: [{ id: 'reason', ph: 'Lý do (không bắt buộc) – vd: Ngày giỗ đã đúng theo gia phả gốc' }], ok: 'Từ chối', danger: true });
+  return v ? { reason: (v.reason || '').trim() } : null;
 }
 function bindCollectCards(m, list, rerender) {
   m.querySelectorAll('[data-cview]').forEach((b) => (b.onclick = () => reviewSheet(list.find((y) => y.id === b.dataset.cview), rerender)));
@@ -2391,7 +2460,7 @@ async function renderProps(m) {
       : '<div class="empty" style="padding:20px"><i class="fa-regular fa-circle-check"></i>Không có đề xuất nào</div>'}</div></div>`;
   m.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => showPerson(b.dataset.open)));
   bindCollectCards(m, cl, () => renderProps(m));
-  const res = (id, st) => D.resolveProposal(S.tree.id, id, st).then(() => { toast('Đã xử lý'); renderProps(m); }).catch((e) => toast(D.errMsg(e), 4000));
+  const res = (id, st, reason) => D.resolveProposal(S.tree.id, id, st, reason).then(() => { toast(st === 'done' ? 'Đã xử lý · đã báo người đề xuất' : 'Đã từ chối · đã báo người đề xuất'); renderProps(m); }).catch((e) => toast(D.errMsg(e), 4000));
   m.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = () => res(b.dataset.ok, 'done')));
   // đề xuất sửa bằng form: mở bảng duyệt Hiện tại → Đề xuất mới (dùng chung với nhờ nhập hộ)
   m.querySelectorAll('[data-pview]').forEach((b) => (b.onclick = () => {
@@ -2409,7 +2478,7 @@ async function renderProps(m) {
       toast('Đã gắn tài khoản'); refreshUsers(); renderProps(m);
     } catch (e) { toast(D.errMsg(e), 4000); }
   }));
-  m.querySelectorAll('[data-no]').forEach((b) => (b.onclick = () => res(b.dataset.no, 'rejected')));
+  m.querySelectorAll('[data-no]').forEach((b) => (b.onclick = async () => { const r = await askReject(); if (r) res(b.dataset.no, 'rejected', r.reason); }));
 }
 
 // ======================= Tab Nhật ký =======================
