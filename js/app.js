@@ -1,12 +1,12 @@
 // Màn hình: đăng nhập / đăng ký dòng họ → menu (Tổng quan, Cây, Danh sách, Ngày giỗ, Nhiều hơn) → quản lý người dùng (root)
-import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792468604051';
-import * as D from './data.js?v=1792468604051';
-import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792468604051';
-import { makeKin, DIALECTS } from './kin.js?v=1792468604051';
-import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792468604051';
-import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792468604051';
+import { $, esc, fold, store, applyTheme, toggleTheme, toast, busy, ask, openSheet, closeSheet, sheetOpen, initSheet, initPickers, pick, fileToAvatar } from './ui.js?v=1792468927926';
+import * as D from './data.js?v=1792468927926';
+import { analyze, layout, renderTree, panZoom, wouldCycle, branchColor, ageOf } from './tree.js?v=1792468927926';
+import { makeKin, DIALECTS } from './kin.js?v=1792468927926';
+import { initChat, stopChat, chatUidOf, chatWith, chatOpenRoom } from './chat.js?v=1792468927926';
+import { solarToLunar, nextDeathAnniversary, formatLunar, yearCanChi, lunarToSolar } from './lunar.js?v=1792468927926';
 
-const APP_VER = '20/10 10:56';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
+const APP_VER = '20/10 11:02';   // tools/deploy.mjs thay bằng ngày giờ đưa lên
 const ROLE = { owner: 'Quản trị', editor: 'Biên tập', member: 'Thành viên', viewer: 'Chỉ xem' };
 const COLORS = [['#0070f4', '#1a82ff'], ['#b45309', '#dc2626'], ['#047857', '#0e7490'], ['#be185d', '#7c3aed'], ['#1d4ed8', '#0891b2'], ['#9a3412', '#a16207']];
 const S = { tree: null, role: null, persons: [], A: null, tab: store('tab') || 'home', q: '', fl: new Set(), gen: '', collapsed: new Set(), sel: null, pz: null, propCount: 0 };
@@ -868,6 +868,7 @@ function drawTree() {
   const colorOn = store('branchColor') !== false;
   const me = myMe();
   renderTree($('tsvg'), LAYOUT, S.A, S.sel, new Set(S.links ? S.links.keys() : []), colorOn, me && kinOn() ? kinOf : null, me, canEditP);
+  if ($('zcol')) $('zcol').classList.toggle('on', colorOn);   // nút màu theo nhánh: xanh khi đang bật
   if ($('zchief')) { $('zchief').classList.toggle('on', store('chiefOn') !== false); $('zchief').hidden = !(S.A.chief && S.A.chief.size); }
   if ($('zhead')) $('zhead').hidden = !(S.A.chiefNow && S.A.chiefNow.size);
   if ($('zme')) { $('zme').hidden = !me; $('zkin').hidden = !me; $('zkin').classList.toggle('on', kinOn()); }
